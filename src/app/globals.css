@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * SAMJONA design tokens.
+ *
+ * The values below are the single source of truth for colour, radius and
+ * typography. tailwind.config.ts reads them through `hsl(var(--token))`, so a
+ * branding change is a change to this file alone. Nothing in the application
+ * hardcodes a colour or a radius.
+ *
+ * The palette is deliberately restrained: a serious administrative and
+ * financial tool, not a marketing site. The primary is a deep slate-teal that
+ * reads as institutional, stays legible on the low-quality projectors common
+ * in school offices, and keeps usable contrast for the ~4.5:1 boundary on
+ * white.
+ *
+ * Light theme only. A dark theme was considered and deliberately not shipped:
+ * introducing a second theme doubles the audit surface for contrast without
+ * being a requirement of any user journey.
+ */
+
+:root {
+  /* Surfaces */
+  --background: 210 25% 98%;
+  --foreground: 217 33% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 217 33% 12%;
+
+  /* Brand - deep slate-teal */
+  --primary: 187 62% 24%;
+  --primary-foreground: 186 40% 97%;
+
+  /* Secondary / subtle surfaces */
+  --secondary: 210 22% 94%;
+  --secondary-foreground: 217 30% 18%;
+  --muted: 210 18% 93%;
+  --muted-foreground: 216 12% 44%;
+  --accent: 186 40% 93%;
+  --accent-foreground: 187 60% 17%;
+
+  /* Statuses - communicative but never the only signal */
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 151 55% 31%;
+  --success-foreground: 152 40% 98%;
+  --warning: 36 92% 40%;
+  --warning-foreground: 36 40% 98%;
+
+  /* Lines and focus */
+  --border: 214 22% 85%;
+  --input: 214 22% 82%;
+  --ring: 187 62% 32%;
+
+  /* Geometry and type */
+  --radius: 0.5rem;
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* A dark theme is deliberately not shipped (see above). */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      'cv02' 'cv03' 'cv04' 'cv11',
+      'tnum';
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Numeric columns line up when monetary tabular figures are displayed. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Accessible hidden label helper */
+  .sr-only {
+    @apply absolute h-px w-px overflow-hidden whitespace-nowrap border-0 p-0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    margin: -1px;
+  }
+}
+
+/* Entrances. Kept short (<=200ms) and subtle: this is a working tool, not a
+   product demo, and motion must never delay a financial action. */
+@keyframes samjona-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes samjona-scale-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: samjona-fade-in 140ms ease-out;
+  }
+
+  .animate-scale-in {
+    animation: samjona-scale-in 150ms ease-out;
+  }
+}
+
+/* Restrained, low-contrast scrollbars on the application surfaces. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
