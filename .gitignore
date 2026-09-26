@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Environment variables - NEVER COMMIT
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Holds the privileged ADMIN_DATABASE_URL and the generated role passwords.
+# Read only by scripts/db-setup.ts, never by the Next.js runtime, so the
+# superuser credential is not present in the deployed server process.
+.env.setup
+.env.setup.*
+# ...but the TEMPLATE must be versioned, or nobody can discover which variables
+# this file is expected to hold. `.env.setup.*` above also matches
+# `.env.setup.example`, so the exclusion has to be stated explicitly.
+!.env.setup.example
+
+# Google service account credentials
+service-account*.json
+*-service-account.json
+credentials.json
+google-credentials*.json
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local exports (may contain financial data)
+exports/
+*.xlsx.local
+
+# Supabase CLI scratch. Holds the project link and cached state, and
+# `cli-latest` changes on every CLI upgrade, which would otherwise show up as a
+# modification in every commit.
+supabase/.temp/
+
+# Vercel
+.vercel
