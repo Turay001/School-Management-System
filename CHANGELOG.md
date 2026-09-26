@@ -28,28 +28,41 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          179 passed / 179, 10 files
+npm run test          285 passed / 285, 13 files
 npm run format:check  exit 0
 npm run verify        green
-git status            clean, 13 commits on master
+git status            see Phase 5 - two commits, uncommitted as of writing
 ```
 
-| Test file                               | Tests |
-| --------------------------------------- | ----- |
-| `db/__tests__/integrity.test.ts`        | 44    |
-| `services/payroll.test.ts`              | 27    |
-| `lib/errors.test.ts`                    | 23    |
-| `auth/permissions.test.ts`              | 17    |
-| `db/__tests__/consistency.test.ts`      | 16    |
-| `db/__tests__/roles.test.ts`            | 14    |
-| `db/__tests__/policy-hardening.test.ts` | 13    |
-| `db/__tests__/migrations.test.ts`       | 9     |
-| `db/__tests__/rls.test.ts`              | 9     |
-| `db/__tests__/views.test.ts`            | 7     |
+| Test file                                              | Tests |
+| ------------------------------------------------------ | ----- |
+| `repositories/postgres/__tests__/repository.test.ts`   | 51    |
+| `services/payroll.test.ts`                             | 27    |
+| `lib/errors.test.ts`                                   | 23    |
+| `repositories/postgres/__tests__/queryBuilder.test.ts` | 40    |
+| `auth/permissions.test.ts`                             | 17    |
+| `db/__tests__/consistency.test.ts`                     | 16    |
+| `db/__tests__/roles.test.ts`                           | 14    |
+| `db/__tests__/audit-write-path.test.ts`                | 13    |
+| `db/__tests__/policy-hardening.test.ts`                | 13    |
+| `db/__tests__/integrity.test.ts`                       | 44    |
+| `db/__tests__/migrations.test.ts`                      | 9     |
+| `db/__tests__/rls.test.ts`                             | 9     |
+| `db/__tests__/views.test.ts`                           | 7     |
 
 Two commands still fail, both deliberately and both recorded below:
 `npm run build` (there is no `app/` directory because no UI exists) and, before
 Phase 4, `npm run format:check`.
+
+### The database is live and currently BROKEN for writes
+
+Stated plainly because it is the most important fact in this file: the schema,
+policies and triggers are deployed, and **the application cannot write an
+employee, a fee payment, a fee adjustment, a salary change, a bank account or
+a payroll run.** Two independent bugs cause it. Both were found by probing the
+live database through a real RLS context, which nothing had done before.
+
+See Phase 5.
 
 ---
 
@@ -416,6 +429,173 @@ failed formatting when the real number was 28).
 
 ---
 
+## Phase 5 — The repository layer, and two production bugs
+
+### What was built
+
+`src/server/repositories/postgres/` — the data-access layer between the service
+layer and PostgreSQL. 91 tests.
+
+| File                | Responsibility                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------- |
+| `identifiers.ts`    | `quoteIdent`, and the whitelists for sort direction and aggregate function.            |
+| `queryBuilder.ts`   | Turns `ListOptions` into SQL text and a parameter bag.                                 |
+| `tableConfig.ts`    | Hand-written `TableConfig` per entity. The primary control on identifier safety.       |
+| `rowMapping.ts`     | `columnToKey` / `columnForKey`, so domain and column spellings never meet by accident. |
+| `baseRepository.ts` | The generic CRUD, list, aggregate and bulk operations.                                 |
+
+Two design decisions worth recording:
+
+**A repository can never open its own connection.** It is _constructed_ with a
+`Queryable`, and the only things that produce one are `withUserContext` and
+`withServiceContext`. So building a repository without an RLS context is
+structurally impossible rather than merely discouraged, and there is no
+singleton to accidentally share.
+
+**Filters, `sortBy` and `select` are keyed by column name; `create` and
+`update` are keyed by domain key.** That is not an inconsistency, it is what the
+pre-existing `Filter` / `ListOptions` interface already specified, and `create` /
+`update` are typed by `T` so the domain spelling is the type-checked one. Both
+directions go through `rowMapping.ts`, and a queryBuilder test asserts that a
+column name on the write path is _rejected_ rather than tolerated — accepting
+both would make a typo a silent no-op on some tables and an error on others.
+
+Also: every query gets a primary-key tiebreaker in `ORDER BY`, so pagination is
+deterministic rather than merely usually-correct; `search.fields` is intersected
+with the table's `searchableFields` at the boundary, and a search entirely
+outside them is refused rather than answered empty; and `aggregate` was fixed
+during this phase — it emitted `select  as "count_id"` for `count`, a syntax
+error, so every count failed while every sum worked.
+
+### Bug 1 — the audit trail blocked every audited write. FIXED, NOT YET DEPLOYED
+
+Six functions write to `audit_logs`. All six were created in migration 010 as
+plain `SECURITY INVOKER`, so their insert ran with the privileges of whoever
+wrote the row being audited. `audit_logs` deliberately has no INSERT policy for
+application roles. The two facts together meant:
+
+```
+ERROR 42501: new row violates row-level security policy for table "audit_logs"
+```
+
+for **every** write that carries an audit entry. Confirmed on the live database
+as `samjona_login`, against a control table with no audit trigger that
+succeeded — which is how the trigger was identified as the cause rather than the
+INSERT policy.
+
+Migration 012 already _claimed_ this was handled: "audit_logs is written
+exclusively by SECURITY DEFINER trigger functions". That sentence described a
+design that was never implemented. Only `app_log_audit`, in migration 002, had
+the right shape.
+
+**Why 179 tests missed it.** The test engine runs every session as a superuser,
+and a superuser bypasses RLS even against `FORCE ROW LEVEL SECURITY`. Every
+integrity test wrote as the table owner and so exercised trigger _logic_ while
+proving nothing about _privileges_. This is precisely the gap the specification
+named when it asked for "direct unauthorized API requests" as a test — the
+authorized path through a real RLS context was never tested either.
+
+**The fix** is migration 017: `security definer` on all six, with `search_path`
+pinned in the same statement. `SECURITY DEFINER` can only be set at creation
+time and `ALTER FUNCTION` has no equivalent, so 017 re-issues all six bodies
+verbatim and 010 is left untouched. That duplication is a real maintenance cost
+and it is guarded: `audit-write-path.test.ts` compares the bodies in both files
+and fails if they drift, so the copy cannot rot silently.
+
+Why not add an INSERT policy instead? Because any role can call `set_config`, so
+a policy gated on a session flag would be forgeable — application code could
+write audit rows of its own invention, or back-date them. SECURITY DEFINER keeps
+the property migration 012 claimed: audit rows come from the database and
+application code cannot write one.
+
+017 also `REVOKE EXECUTE ... FROM PUBLIC` on all seven audit functions. That is
+hardening rather than a fix — PostgreSQL already refuses to call a trigger
+function directly — but widening what a function may _do_ while leaving it
+callable by every role is not a combination worth keeping.
+
+**The fix depends on the function owner holding BYPASSRLS**, because
+`audit_logs` is `FORCE ROW LEVEL SECURITY` and an owner without it would be
+subject to the very policy that has no INSERT arm. Migration 017's guard checks
+this and raises rather than leaving a write path that works in every test and
+fails in production.
+
+### Bug 2 — payroll's privileged context was never established. NOT FIXED
+
+`payroll_periods` and `payroll_runs` have SELECT-only policies, deliberately:
+migration 012 says generation "go[s] through the service layer's privileged
+context". But `withServiceContext` does not establish any privilege. It sets a
+GUC:
+
+```ts
+await tx.query('select set_config($1, $2, true)', ['app.service_context', 'payroll']);
+```
+
+A GUC is not a privilege. It uses the ordinary application pool, so every
+statement in it runs as `samjona_login` → `samjona_app` → no INSERT policy → 42501. The comment describes an intent the code does not implement.
+
+The second half of the bug is worse, and was not visible from the code alone.
+`samjona_service_login` **is** a member of `samjona_service`, and
+`samjona_service` **does** have `bypassrls = true` — and connecting _directly_ as
+`samjona_service_login` still gets:
+
+```
+42501 new row violates row-level security policy for table "payroll_periods"
+```
+
+because **`rolbypassrls` is a role attribute and is not inherited through
+membership**. Object privileges are inherited; the attribute is not. So merely
+granting membership, which is what `db:setup` does, buys nothing.
+
+Two things must both change: the service connection must `set local role
+samjona_service` after connecting, and `withServiceContext` must use a pool built
+from the service credentials rather than the application pool. Doing the first
+without the second would be safe but ineffective; doing the second without the
+first is what is broken today.
+
+Not yet implemented. Recorded here so it is not lost.
+
+### The tool that found both
+
+`npm run db:verify-writes` — `scripts/verify-audit-writes.ts`.
+
+It is deliberately _not_ part of `npm run verify`. It is the only check that can
+settle either bug, because it is the only thing that writes over a real
+connection as the roles the application really uses. It performs each audited
+write inside one transaction that is rolled back, probes a write that must be
+_refused_ to prove nothing was widened, and exits non-zero on failure so it can
+gate a deploy.
+
+It connects twice on purpose. Payroll is probed as `samjona_service_login`,
+because probing it as the application role fails on a _deliberate_ policy and
+would be misread as a bug — which is exactly the misreading that first
+happened here.
+
+`fee_adjustments` cannot be probed at all: `created_by` is `NOT NULL` and
+references `app_users`, and `app_users` is empty. That is not a limitation of the
+script, it is a real onboarding gap — until the first user is provisioned, no one
+can record a fee adjustment. There is no bootstrap path for the first user
+either, which is a gap in its own right.
+
+The companion test, `db/__tests__/audit-write-path.test.ts`, covers what _can_ be
+asserted locally: that every function writing `audit_logs` is `SECURITY DEFINER`,
+that its owner outranks the caller, that its `search_path` is pinned, and that it
+is not `PUBLIC`-executable. The set of functions is discovered by reading
+`pg_proc.prosrc`, not hard-coded — a list written out by hand would go stale the
+moment someone added an audit branch to a new table, and the new function would
+be `SECURITY INVOKER` by default, which is the bug repeated.
+
+### Deployment state
+
+**Migration 017 is written, tested and NOT applied to the live database.** The
+Supabase CLI's project link and credentials are no longer present on this
+machine (`supabase/.temp` holds only `cli-latest`, and there is no stored access
+token), so `supabase db push` cannot authenticate. Applying it needs
+`supabase login` or a `SUPABASE_ACCESS_TOKEN`.
+
+Until it is applied, the live database has Bug 1 and every audited write fails.
+
+---
+
 ## Decisions taken
 
 | Decision                                                                 | Why                                                                                                                                                                                           |
@@ -481,7 +661,9 @@ flagged `is_placeholder = true` in the `settings` table.
 
 ### Code
 
-- [ ] Repositories (`src/server/repositories/postgres/`) and the factory
+- [x] Repositories (`src/server/repositories/postgres/`) and the factory — built
+      in Phase 5, 91 tests. Only `EMPLOYEES` and `SALARY_HISTORY` are configured;
+      the rest are added as their services are written.
 - [ ] Supabase Auth wiring and session handling
 - [ ] Employee management service and routes
 - [ ] Payroll generation, validation report, approval, bank export
@@ -497,15 +679,25 @@ flagged `is_placeholder = true` in the `settings` table.
 
 ### Not done
 
-**The schema is deployed, and no application is built on top of it.** Every
-table, trigger, policy and view is live and verified, but there is no
-repository, no service, no API route and no screen that reads or writes any of
-it. Nothing a user can do is finished. The database is a complete foundation
-with no building on it.
+**The schema is deployed, and almost no application is built on top of it.**
+Every table, trigger, policy and view is live and verified, and the repository
+layer now exists (Phase 5), but there is no service, no API route and no screen
+that reads or writes any of it. Nothing a user can do is finished.
+
+**And the live database cannot accept the writes that carry an audit entry.**
+Two independent bugs, both described in Phase 5, both found by probing through a
+real RLS context. One is fixed in migration 017 and waiting for a Supabase
+credential to deploy; the other is diagnosed and not yet fixed. Until both are
+resolved, the schema being live means the tables exist — not that they can be
+written.
 
 `npm run build` fails. There is no `app/` or `pages/` directory because no
 interface has been built. `npm run verify` omits `build` for this reason,
 deliberately, rather than pretending it passes.
+
+`npm run db:verify-writes` is not part of `npm run verify` on purpose. It needs
+a live database and two sets of credentials, so it is a deployment gate to be
+run deliberately, not a unit test.
 
 `npm run format:check` now passes (see Phase 4).
 

@@ -20,6 +20,7 @@
     "test:coverage": "vitest run --coverage",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "db:setup": "tsx scripts/db-setup.ts",
+    "db:verify-writes": "tsx scripts/verify-audit-writes.ts",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",
     "db:studio": "supabase studio"
