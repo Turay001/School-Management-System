@@ -50,7 +50,6 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Students',
         access: ['students:read', 'students:read_own_class'],
         icon: IconStudent,
-        placeholder: true,
       },
       {
         href: '/leave',
