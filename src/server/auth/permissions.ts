@@ -1,6 +1,8 @@
 import { ForbiddenError } from '../../lib/errors';
 import { ROLES, type Role } from '../db/types';
 
+export type { Role };
+
 /**
  * Role-based access control.
  *
@@ -146,7 +148,7 @@ export function can(user: SessionUser | null | undefined, permission: Permission
   return roleHasPermission(user.role, permission);
 }
 
-export function canAny(user: SessionUser | null | undefined, perms: Permission[]): boolean {
+export function canAny(user: SessionUser | null | undefined, perms: readonly Permission[]): boolean {
   if (!user) return false;
   return perms.some((p) => roleHasPermission(user.role, p));
 }
