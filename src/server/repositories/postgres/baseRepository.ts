@@ -70,11 +70,11 @@ export class PostgresRepository<T extends { id: string }> implements Repository<
 
     // Both run on the same client, so they see one transaction's snapshot. Two
     // separate connections could see different data, and `total` would
-    // disagree with the rows actually returned.
-    const [rows, totals] = await Promise.all([
-      this.tx.query(query.text, query.params as never[]),
-      this.tx.query(count.text, count.params as never[]),
-    ]);
+    // disagree with the rows actually returned. They must run SEQUENTIALLY:
+    // pg forbids more than one in-flight query on a client (multiplexing is
+    // deprecated and will be removed in pg@9), so there is no Promise.all here.
+    const rows = await this.tx.query(query.text, query.params as never[]);
+    const totals = await this.tx.query(count.text, count.params as never[]);
 
     const total = Number(totals.rows[0]?.total ?? 0);
     const { page, pageSize } = normaliseListOptions(options);

@@ -58,20 +58,26 @@ export interface DashboardData {
 
 export async function getDashboardData(user: SessionUser): Promise<DashboardData> {
   return withUserContext(user, async (tx) => {
-    const [staff, payroll, feeArrearsCount, feeArrears, pendingExpenses] = await Promise.all([
-      canAny(user, ['employees:read', 'employees:read_own']) ? staffOverview(tx) : Promise.resolve(null),
-      can(user, 'payroll:read') ? latestPayroll(tx) : Promise.resolve(null),
-      can(user, 'fees:read') ? countArrears(tx) : Promise.resolve(0),
-      can(user, 'fees:read') ? listArrears(tx, 5) : Promise.resolve([]),
-      can(user, 'expenses:read') ? countPendingExpenses(tx) : Promise.resolve(0),
-    ]);
+    // One client, one transaction: pg forbids more than one in-flight query
+    // per client, so these run sequentially - never Promise.all. The
+    // permission gates decide which sections exist for this role.
+    const staff = canAny(user, ['employees:read', 'employees:read_own'])
+      ? await staffOverview(tx)
+      : null;
+    const payroll = can(user, 'payroll:read') ? await latestPayroll(tx) : null;
+    const canReadFees = can(user, 'fees:read');
+    const feeArrearsCount = canReadFees ? await countArrears(tx) : 0;
+    const feeArrears = canReadFees ? await listArrears(tx, 5) : [];
+    const pendingExpenseCount = can(user, 'expenses:read')
+      ? await countPendingExpenses(tx)
+      : 0;
 
     return {
-      staff: staff ?? null,
-      payroll: payroll ?? null,
-      feeArrearsCount: feeArrearsCount ?? 0,
-      feeArrears: feeArrears ?? [],
-      pendingExpenseCount: pendingExpenses ?? 0,
+      staff,
+      payroll,
+      feeArrearsCount,
+      feeArrears,
+      pendingExpenseCount,
     };
   });
 }

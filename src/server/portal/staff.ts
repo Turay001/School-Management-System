@@ -268,18 +268,18 @@ export async function getStaffDetail(user: SessionUser, id: string): Promise<Sta
     // may not read.
     if (!employee) throw new NotFoundError('Employee', id);
 
-    const [salaries, banks] = await Promise.all([
-      salaryRecordRepository(tx).list({
-        filter: { eq: { employee_id: id } },
-        sortBy: 'effective_from',
-        sortDir: 'desc',
-      }),
-      bankAccountRepository(tx).list({
-        filter: { eq: { employee_id: id } },
-        sortBy: 'effective_from',
-        sortDir: 'desc',
-      }),
-    ]);
+    // Sequential, not Promise.all: these share one transaction client, and pg
+    // forbids more than one query in flight at once.
+    const salaries = await salaryRecordRepository(tx).list({
+      filter: { eq: { employee_id: id } },
+      sortBy: 'effective_from',
+      sortDir: 'desc',
+    });
+    const banks = await bankAccountRepository(tx).list({
+      filter: { eq: { employee_id: id } },
+      sortBy: 'effective_from',
+      sortDir: 'desc',
+    });
 
     return {
       employee,
