@@ -24,9 +24,9 @@
  */
 
 import type { Queryable } from '../../db/pool';
-import type { Employee, SalaryRecord } from '../../db/types';
+import type { BankAccount, Employee, SalaryRecord } from '../../db/types';
 import { PostgresRepository } from './baseRepository';
-import { EMPLOYEES, SALARY_HISTORY, type TableConfig } from './tableConfig';
+import { BANK_ACCOUNTS, EMPLOYEES, SALARY_HISTORY, type TableConfig } from './tableConfig';
 
 export function repositoryFor<T extends { id: string }>(
   tx: Queryable,
@@ -41,6 +41,10 @@ export function employeeRepository(tx: Queryable): PostgresRepository<Employee> 
 
 export function salaryRecordRepository(tx: Queryable): PostgresRepository<SalaryRecord> {
   return new PostgresRepository<SalaryRecord>(tx, SALARY_HISTORY);
+}
+
+export function bankAccountRepository(tx: Queryable): PostgresRepository<BankAccount> {
+  return new PostgresRepository<BankAccount>(tx, BANK_ACCOUNTS);
 }
 
 // The remaining factories are exported as soon as their table configuration

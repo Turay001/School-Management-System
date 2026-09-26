@@ -137,6 +137,37 @@ export const SALARY_HISTORY: TableConfig = {
   defaultSort: { field: 'effective_from', dir: 'desc' },
 };
 
+// ---------------------------------------------------------------------------
+// employee_bank_accounts
+// ---------------------------------------------------------------------------
+//
+// SENSITIVE. The account_number column is deliberately NOT searchable and NOT
+// sortable: letting a free-text search or an ORDER BY touch account numbers
+// would be a way to bulk-extract payment details from the staff module.
+
+export const BANK_ACCOUNTS: TableConfig = {
+  entityName: 'BankAccount',
+  tableName: 'employee_bank_accounts',
+  primaryKey: 'id',
+  columns: [
+    'id',
+    'employee_id',
+    'bank_name',
+    'account_name',
+    'account_number',
+    'account_status',
+    'is_primary',
+    'effective_from',
+    'effective_to',
+    'created_at',
+    'updated_at',
+    'created_by',
+  ],
+  sortableFields: ['created_at', 'effective_from'],
+  searchableFields: [],
+  defaultSort: { field: 'created_at', dir: 'desc' },
+};
+
 /**
  * The registry. A repository is looked up from here by entity name.
  *
@@ -148,6 +179,7 @@ export const SALARY_HISTORY: TableConfig = {
 export const TABLE_CONFIGS: Readonly<Record<string, TableConfig>> = {
   Employee: EMPLOYEES,
   SalaryRecord: SALARY_HISTORY,
+  BankAccount: BANK_ACCOUNTS,
 };
 
 export function tableConfig(entityName: string): TableConfig {
