@@ -311,6 +311,48 @@ export async function checkRoleSecurity(db: Queryable): Promise<RoleCheck[]> {
     });
   }
 
+  // THE SEPARATION MUST HOLD IN BOTH DIRECTIONS.
+  //
+  // The application login must NOT be a member of the service role. If it were,
+  // any SQL injection in any request handler could `set role samjona_service`,
+  // become BYPASSRLS, and every policy in this schema would be decorative. The
+  // escalation is meant to be reachable only by code holding
+  // SERVICE_DATABASE_URL, which is server-only.
+  //
+  // This is the invariant that makes the separate service pool worth having
+  // rather than a `set role` on the application connection, and it is checked
+  // here because nothing else checks it: a grant added by hand for convenience
+  // would be invisible until someone tried to use it.
+  const appIsService = memberships.some(
+    (m) => m.member === APP_LOGIN_ROLE && m.granted === SERVICE_GROUP_ROLE,
+  );
+  checks.push({
+    name: `${APP_LOGIN_ROLE} is NOT a member of ${SERVICE_GROUP_ROLE}`,
+    passed: !appIsService,
+    detail: appIsService
+      ? 'the application role can escalate to BYPASSRLS, so an injection in any ' +
+        'request handler would bypass every RLS policy'
+      : 'cannot escalate; the service pool is the only path to the service role',
+  });
+
+  // And the inverse. `rolbypassrls` is a role attribute and is NOT inherited
+  // through membership, so this service login on its own cannot write payroll.
+  // `withServiceContext` compensates with an explicit `set local role
+  // samjona_service` on a dedicated pool. If that set role were ever dropped
+  // from the code, payroll generation would fail - which is why the write path
+  // is probed directly rather than inferred from these attributes.
+  const serviceLogin = byName.get(SERVICE_LOGIN_ROLE);
+  if (serviceLogin) {
+    checks.push({
+      name: `${SERVICE_LOGIN_ROLE} does not itself bypass RLS`,
+      passed: !serviceLogin.rolbypassrls,
+      detail: serviceLogin.rolbypassrls
+        ? 'rolbypassrls = true on the login role, so the service pool is ' +
+          'unnecessary and the credential is more powerful than it needs to be'
+        : 'escalates explicitly via set local role, as withServiceContext does',
+    });
+  }
+
   return checks;
 }
 
@@ -372,6 +414,77 @@ export async function probeAsAppRole(db: Queryable, sql: string): Promise<ProbeR
   } finally {
     // `reset role` is attempted separately because it cannot run while the
     // restricted role is active and RLS is in force.
+    await db.query('reset role').catch(() => undefined);
+    await db.query('rollback').catch(() => undefined);
+  }
+}
+
+/**
+ * A payroll write that MUST succeed, exercised through the service role.
+ *
+ * This is the probe for the SECOND production bug. `payroll_periods` has
+ * SELECT-only policies on purpose, so the application role cannot write it -
+ * and payroll generation is supposed to reach it via `withServiceContext`,
+ * which switches to `samjona_service`. That function used to set a GUC instead
+ * of switching role, so nothing could write payroll at all, and nothing
+ * detected it: no policy was missing, no grant was missing, and every catalog
+ * check passed.
+ *
+ * The statement is a real INSERT of a far-future period, inside a transaction
+ * that is rolled back. `payroll_periods` is unique on (year, month), so a fixed
+ * 2099 value cannot collide with real data, and the rollback means the row does
+ * not survive even if the probe is interrupted.
+ *
+ * Note the year 2099 rather than something like 2098-12: `smallint` holds it,
+ * and a period that far out can never be a real school calendar.
+ */
+export const SERVICE_PAYROLL_WRITE_PROBE = `insert into payroll_periods (year, month) values (2099, 12) returning id`;
+
+/**
+ * Run a statement as the payroll service role, the way `withServiceContext`
+ * does. Always rolled back.
+ *
+ * REQUIRES A CONNECTION ALREADY AUTHENTICATED AS `samjona_service_login`.
+ * Passing the admin connection does not work: `postgres` holds CREATEROLE on
+ * Supabase but is not a superuser, and `SET ROLE` requires membership, which
+ * CREATEROLE does not confer. So the caller must open a real connection as the
+ * service login - see `serviceProbeUrl`.
+ *
+ * That constraint is also the point. Connecting as the login role and
+ * escalating from there exercises the password, the membership grant and the
+ * BYPASSRLS attribute together, exactly as the application does. A probe that
+ * skipped the login role could report success while payroll generation still
+ * failed at runtime.
+ */
+export async function probeAsServiceRole(db: Queryable, sql: string): Promise<ProbeResult> {
+  await db.query('begin');
+  try {
+    // The connection must ALREADY be authenticated as the service login role.
+    //
+    // The obvious alternative - assuming the group role from the admin
+    // connection - does not work on Supabase. `postgres` holds CREATEROLE but is
+    // not a superuser, and `SET ROLE` requires MEMBERSHIP, which CREATEROLE does
+    // not confer. So that version failed with "permission denied to set role
+    // samjona_service" no matter how correct the configuration was, which is a
+    // misleading way to report a genuine problem.
+    //
+    // Connecting as the login role and escalating from there is also the only
+    // version that tests the real path: it exercises the password, the
+    // membership grant, and the BYPASSRLS attribute together, exactly as
+    // `withServiceContext` does. A probe that skipped the login role could pass
+    // while payroll generation still failed at runtime.
+    await db.query(`set local role ${SERVICE_GROUP_ROLE}`);
+
+    const result = await db.query(sql);
+    return { rows: result.rows.length, errorCode: null, errorMessage: null };
+  } catch (err) {
+    const error = err as { code?: string; message?: string };
+    return {
+      rows: 0,
+      errorCode: error.code ?? null,
+      errorMessage: error.message ?? String(err),
+    };
+  } finally {
     await db.query('reset role').catch(() => undefined);
     await db.query('rollback').catch(() => undefined);
   }

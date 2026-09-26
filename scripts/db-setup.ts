@@ -37,6 +37,21 @@
  *   SAMJONA_SERVICE_LOGIN_PASSWORD  Password for the payroll role. Optional.
  *   DATABASE_URL                    Optional. Only used to sanity-check what
  *                                   the running application will connect as.
+ *
+ * WHAT IT VERIFIES THAT NOTHING ELSE DOES
+ * ---------------------------------------
+ * Two probes exist because a suite of refusals cannot detect a closed door
+ * that should be open:
+ *
+ *   - The application role must be REFUSED on payroll_items, bank account
+ *     numbers, and approved payroll runs.
+ *   - The service role must be PERMITTED to write a payroll period.
+ *
+ * The second is the newer of the two. The schema was fully compliant while
+ * payroll generation could not write anything at all, because the code that
+ * claimed to escalate to the service role only set a GUC. No policy was missing
+ * and no grant was missing, so every catalog check passed and the defect was
+ * invisible until something actually attempted the write.
  */
 
 import { Client } from 'pg';
@@ -52,9 +67,11 @@ import {
   READ_BANK_ACCOUNTS_PROBE,
   SERVICE_GROUP_ROLE,
   SERVICE_LOGIN_ROLE,
+  SERVICE_PAYROLL_WRITE_PROBE,
   checkRoleSecurity,
   checkTableSecurity,
   probeAsAppRole,
+  probeAsServiceRole,
   upsertLoginRole,
   type Queryable,
 } from '../src/server/db/roles';
@@ -228,6 +245,83 @@ function readConfig(): Config | null {
   return { adminUrl: adminUrl!, appUrl, appPassword: appPassword!, servicePassword };
 }
 
+/**
+ * Check SERVICE_DATABASE_URL against the credentials in .env.setup, and say
+ * something actionable if they disagree.
+ *
+ * These two are the same login role reached by two different routes, and they
+ * can drift: a password rotated in the database but not in `.env.setup` leaves
+ * the application unable to generate payroll while every setup check still
+ * passes, because setup authenticates with the environment password rather than
+ * the one in the URL.
+ */
+function checkServiceUrl(setupPassword: string | undefined): void {
+  const serviceUrl = process.env.SERVICE_DATABASE_URL?.trim();
+  if (!serviceUrl) {
+    warn('SERVICE_DATABASE_URL is not set. Payroll generation will fail at runtime.');
+    warn('It must be the same transaction-pooler URL as DATABASE_URL, with the user');
+    warn('changed to ' + SERVICE_LOGIN_ROLE + '. See .env.example.');
+    return;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(serviceUrl);
+  } catch {
+    fail('SERVICE_DATABASE_URL is not a valid URL.');
+    return;
+  }
+
+  const user = decodeURIComponent(parsed.username);
+  if (user === SERVICE_LOGIN_ROLE) {
+    ok(`SERVICE_DATABASE_URL connects as ${SERVICE_LOGIN_ROLE}`);
+  } else {
+    fail(
+      `SERVICE_DATABASE_URL connects as "${user}", but payroll generation assumes ` +
+        `${SERVICE_LOGIN_ROLE}. withServiceContext issues \`set local role ` +
+        `${SERVICE_GROUP_ROLE}\`, which only that role is a member of.`,
+    );
+  }
+
+  // The app role must not be the one holding the service credential, or the
+  // separate pool is decorative and the separation is gone.
+  if (user === APP_LOGIN_ROLE) {
+    fail(
+      `SERVICE_DATABASE_URL authenticates as ${APP_LOGIN_ROLE}, which is a member of ` +
+        `${APP_GROUP_ROLE} and NOT of ${SERVICE_GROUP_ROLE}. Payroll would be blocked ` +
+        'by RLS, and the two pools would be identical.',
+    );
+  }
+  if (user === 'postgres' || user.startsWith('postgres.')) {
+    fail(
+      'SERVICE_DATABASE_URL connects as the table owner, which bypasses RLS as a side ' +
+        'effect of ownership rather than by design. Use ' +
+        SERVICE_LOGIN_ROLE +
+        '.',
+    );
+  }
+
+  if (!parsed.port) {
+    warn(
+      'SERVICE_DATABASE_URL has no explicit port, so it defaults to 5432. Payroll holds a ' +
+        'connection for the length of a run; use the transaction pooler on 6543.',
+    );
+  } else if (parsed.port !== '6543') {
+    warn(
+      `SERVICE_DATABASE_URL uses port ${parsed.port}. The transaction pooler (6543) is ` +
+        'recommended, as for DATABASE_URL.',
+    );
+  }
+
+  if (setupPassword && parsed.password && parsed.password !== setupPassword) {
+    warn(
+      'the password in SERVICE_DATABASE_URL differs from SAMJONA_SERVICE_LOGIN_PASSWORD. One ' +
+        'of them is stale; db:setup rotates the password on every run, so re-copy the URL ' +
+        'from .env.setup after running it.',
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Verification
 // ---------------------------------------------------------------------------
@@ -284,7 +378,74 @@ async function verifyRoles(db: Queryable): Promise<void> {
  * The catalogue can list a policy that does not behave as intended. Only an
  * attempted statement settles it.
  */
-async function verifyEnforcement(db: Queryable): Promise<void> {
+/**
+ * Prove payroll is actually WRITABLE, over a real connection, as the service role.
+ *
+ * A dedicated connection is required, and the admin connection cannot be reused.
+ * `postgres` on Supabase holds CREATEROLE but is not a superuser, and `SET ROLE`
+ * needs MEMBERSHIP rather than CREATEROLE, so escalating from the admin
+ * connection fails with "permission denied to set role samjona_service" however
+ * correct the configuration is. That is a misleading way to report a real
+ * problem, and it is what the first version of this probe did.
+ *
+ * Connecting as `samjona_service_login` is also the only version that tests the
+ * real path: it exercises the password, the membership grant and the BYPASSRLS
+ * attribute together, exactly as `withServiceContext` does. A probe that skipped
+ * the login role could report success while payroll generation still failed.
+ */
+async function verifyServiceCanWritePayroll(config: Config): Promise<void> {
+  if (!config.servicePassword) {
+    note(
+      `cannot write payroll as the service role - SKIPPED, ${SERVICE_LOGIN_ROLE} not provisioned`,
+    );
+    return;
+  }
+
+  const base = config.appUrl ?? config.adminUrl;
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    note('cannot write payroll as the service role - SKIPPED, no usable connection URL');
+    return;
+  }
+  url.username = SERVICE_LOGIN_ROLE;
+  url.password = config.servicePassword;
+
+  const client = new Client({ connectionString: url.toString(), connectionTimeoutMillis: 10_000 });
+  try {
+    await client.connect();
+  } catch (err) {
+    fail(
+      `could not connect as ${SERVICE_LOGIN_ROLE}: ${describe(err)}\n` +
+        '        Payroll generation will fail. Re-run npm run db:setup to rotate the password,\n' +
+        '        then update SERVICE_DATABASE_URL to match.',
+    );
+    return;
+  }
+
+  try {
+    const payroll = await probeAsServiceRole(
+      client as unknown as Queryable,
+      SERVICE_PAYROLL_WRITE_PROBE,
+    );
+    if (payroll.errorCode === null) {
+      ok(`service role CAN write payroll_periods (as ${SERVICE_GROUP_ROLE})`);
+    } else {
+      fail(
+        `service role CANNOT write payroll_periods - ${payroll.errorCode}: ` +
+          `${payroll.errorMessage ?? 'no message'}\n` +
+          '        Payroll generation is broken. Check that the group role has BYPASSRLS and\n' +
+          `        that ${SERVICE_GROUP_ROLE} holds INSERT on payroll_periods, and that\n` +
+          '        withServiceContext issues `set local role` rather than only a GUC.',
+      );
+    }
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}
+
+async function verifyEnforcement(db: Queryable, config: Config): Promise<void> {
   head('Enforcement probes (each rolled back)');
 
   // Missing GRANT -> 42501. A missing POLICY -> zero rows, not an error. The
@@ -322,6 +483,16 @@ async function verifyEnforcement(db: Queryable): Promise<void> {
       ok(`cannot read bank account numbers — 0 of ${bankAccounts} visible`);
     else fail(`application role LEAKED ${result.rows} of ${bankAccounts} bank account rows`);
   }
+
+  // Payroll must be writable, and only through the service role.
+  //
+  // This is the positive counterpart to the refusal probes above. Without it
+  // the setup was entirely green on a database where payroll generation could
+  // not write anything at all: no policy was missing, no grant was missing, and
+  // the only thing wrong was that `withServiceContext` set a GUC instead of
+  // assuming the service role. A suite of refusals cannot detect a path that is
+  // closed when it should be open.
+  await verifyServiceCanWritePayroll(config);
 
   // The approved-run guard is only meaningful with an approved run to change.
   const approved = await db.query<{ n: number }>(
@@ -544,6 +715,8 @@ async function main(): Promise<number> {
 
   const db: Queryable = client as unknown as Queryable;
 
+  checkServiceUrl(config.servicePassword);
+
   head('Login roles');
   try {
     await upsertLoginRole(db, {
@@ -574,7 +747,7 @@ async function main(): Promise<number> {
   // these would corrupt each other's session state.
   await verifyTableSecurity(db);
   await verifyRoles(db);
-  await verifyEnforcement(db);
+  await verifyEnforcement(db, config);
   await reportMigrations(client);
   await client.end().catch(() => undefined);
 

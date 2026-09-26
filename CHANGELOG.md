@@ -28,10 +28,10 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          285 passed / 285, 13 files
+npm run test          292 passed / 292, 14 files
 npm run format:check  exit 0
 npm run verify        green
-git status            see Phase 5 - two commits, uncommitted as of writing
+git status            see Phase 5 - three commits, uncommitted as of writing
 ```
 
 | Test file                                              | Tests |
@@ -49,18 +49,25 @@ git status            see Phase 5 - two commits, uncommitted as of writing
 | `db/__tests__/migrations.test.ts`                      | 9     |
 | `db/__tests__/rls.test.ts`                             | 9     |
 | `db/__tests__/views.test.ts`                           | 7     |
+| `db/__tests__/service-context.test.ts`                 | 7     |
 
 Two commands still fail, both deliberately and both recorded below:
 `npm run build` (there is no `app/` directory because no UI exists) and, before
 Phase 4, `npm run format:check`.
 
-### The database is live and currently BROKEN for writes
+### The database is live, and both write bugs are fixed and proven
 
-Stated plainly because it is the most important fact in this file: the schema,
-policies and triggers are deployed, and **the application cannot write an
-employee, a fee payment, a fee adjustment, a salary change, a bank account or
-a payroll run.** Two independent bugs cause it. Both were found by probing the
-live database through a real RLS context, which nothing had done before.
+Stated plainly because it used to be the most important fact in this file. The
+schema, policies and triggers are deployed, and for a while **the application
+could not write an employee, a fee payment, a fee adjustment, a salary change,
+a bank account or a payroll run.** Two independent bugs caused it; both were
+found by probing the live database through a real RLS context, which nothing
+had done before.
+
+- **Bug 1** (the audit triggers) is fixed by migration 017, **applied to the
+  live database** and verified there.
+- **Bug 2** (payroll's privileged context) is fixed in code, verified against
+  the live database, and covered by `db:setup`'s service-write probe.
 
 See Phase 5.
 
@@ -519,24 +526,25 @@ subject to the very policy that has no INSERT arm. Migration 017's guard checks
 this and raises rather than leaving a write path that works in every test and
 fails in production.
 
-### Bug 2 — payroll's privileged context was never established. NOT FIXED
+### Bug 2 — payroll's privileged context was never established. FIXED
 
 `payroll_periods` and `payroll_runs` have SELECT-only policies, deliberately:
-migration 012 says generation "go[s] through the service layer's privileged
-context". But `withServiceContext` does not establish any privilege. It sets a
+migration 012 says generation "goes through the service layer's privileged
+context". But `withServiceContext` did not establish any privilege. It set a
 GUC:
 
 ```ts
 await tx.query('select set_config($1, $2, true)', ['app.service_context', 'payroll']);
 ```
 
-A GUC is not a privilege. It uses the ordinary application pool, so every
-statement in it runs as `samjona_login` → `samjona_app` → no INSERT policy → 42501. The comment describes an intent the code does not implement.
+A GUC is not a privilege. It used the ordinary application pool, so every
+statement in it ran as `samjona_login` → `samjona_app` → no INSERT
+policy → 42501. The comment described an intent the code did not implement.
 
-The second half of the bug is worse, and was not visible from the code alone.
+The second half of the bug was worse, and was not visible from the code alone.
 `samjona_service_login` **is** a member of `samjona_service`, and
-`samjona_service` **does** have `bypassrls = true` — and connecting _directly_ as
-`samjona_service_login` still gets:
+`samjona_service` **does** have `bypassrls = true` — and connecting
+_directly_ as `samjona_service_login` still gets:
 
 ```
 42501 new row violates row-level security policy for table "payroll_periods"
@@ -544,15 +552,69 @@ The second half of the bug is worse, and was not visible from the code alone.
 
 because **`rolbypassrls` is a role attribute and is not inherited through
 membership**. Object privileges are inherited; the attribute is not. So merely
-granting membership, which is what `db:setup` does, buys nothing.
+granting membership, which is all `db:setup` did, bought nothing.
 
-Two things must both change: the service connection must `set local role
-samjona_service` after connecting, and `withServiceContext` must use a pool built
-from the service credentials rather than the application pool. Doing the first
-without the second would be safe but ineffective; doing the second without the
-first is what is broken today.
+**The fix needs two changes, and neither is sufficient alone.**
 
-Not yet implemented. Recorded here so it is not lost.
+1. `set local role samjona_service` per transaction. The pool alone buys
+   nothing, for the attribute reason above.
+2. A **separate pool** authenticated as `samjona_service_login`, from a new
+   `SERVICE_DATABASE_URL`. The role switch alone buys nothing either, because
+   `samjona_login` is deliberately _not_ a member of the service role — so
+   `SET ROLE` from the application connection is refused outright, and that is
+   the point.
+
+**Why a second pool rather than membership.** Making `samjona_login` a member of
+`samjona_service` would be the one-line fix, and it was rejected: it would put
+the ability to escalate to a BYPASSRLS role inside the hands of the role that
+serves every request, and any SQL injection in any route handler would then
+make every RLS policy in the schema decorative. Separate credentials mean the
+escalation is not reachable from the web tier at all. `npm run db:setup` now
+**fails** if that separation is ever lost, because nothing else would notice a
+grant added by hand for convenience.
+
+`SET LOCAL` rather than `SET`, so a pooled connection cannot carry the
+escalation to its next caller.
+
+**A third subtlety, found while testing this.** `BYPASSRLS` bypasses row-level
+security _policies_ but not table-level _privileges_. A role with BYPASSRLS and
+no `INSERT` grant still cannot insert. Migration 014 grants the service role
+exactly what it needs and production was already correct — but the test
+fixture had to reproduce those grants, because without them the failure is
+`permission denied for table` rather than `42501`, and asserting on that would
+have proved nothing about RLS.
+
+Two confusing failures during this work were artefacts, not findings, and are
+recorded so they are not re-diagnosed later: a `permission denied to set role`
+came from escalating off the admin connection, where `postgres` holds
+`CREATEROLE` on Supabase but is not a superuser, and `SET ROLE` needs
+membership rather than CREATEROLE; and the `payroll_periods` refusal was
+misreported as a bug until the probe was pointed at the role that payroll
+actually writes as.
+
+### The first user could not exist
+
+A separate gap the probe surfaced. `fee_adjustments.created_by` is `NOT NULL`
+and references `app_users`, which was empty — so nobody could record a fee
+adjustment, and several attribution columns had nothing to point at. There was
+no bootstrap path for the first user either, which is a gap in its own right.
+
+```
+npm run db:seed-first-user -- <auth-user-uuid> <username> "<full name>" <role>
+```
+
+The split is deliberate. Creating a row in `auth.users` properly means the
+Supabase Auth admin API, which authenticates with the service-role key — a
+broader credential than anything in this system needs, and one this repository
+deliberately does not hold. So the administrator creates the auth user in the
+dashboard, and the script attaches the application profile to it using the admin
+database connection they already have.
+
+The role argument is **required, not defaulted**. A silent default of
+`proprietor` would hand the highest privilege in the system to whoever forgot to
+type it. The script also refuses to change an existing account's role: a role
+change is deliberate, attributed and audited, and belongs in the application
+where that is recorded.
 
 ### The tool that found both
 
@@ -586,13 +648,25 @@ be `SECURITY INVOKER` by default, which is the bug repeated.
 
 ### Deployment state
 
-**Migration 017 is written, tested and NOT applied to the live database.** The
-Supabase CLI's project link and credentials are no longer present on this
-machine (`supabase/.temp` holds only `cli-latest`, and there is no stored access
-token), so `supabase db push` cannot authenticate. Applying it needs
-`supabase login` or a `SUPABASE_ACCESS_TOKEN`.
+**Both bugs are now fixed and proven against the live database.**
 
-Until it is applied, the live database has Bug 1 and every audited write fails.
+The Supabase CLI's project link and stored access token are no longer present
+on this machine, and the token the user supplied turned out to be the **anon
+key** (its JWT payload carries `"role":"anon"`; CLI tokens are `sbp_...`
+strings, which is why it could not authenticate). 017 was applied instead with
+`supabase db push --db-url <admin>` — same tool, same
+`supabase_migrations.schema_migrations` history, no token required. A dry run
+first confirmed exactly one migration would be pushed.
+
+The result, captured by `npm run db:verify-writes` against the live database:
+the six audit functions are now `SECURITY DEFINER` in the live catalog, and
+employees, salary history, bank accounts and fee payments all write as
+`samjona_login`, while a teacher is still refused and payroll writes still go
+through the service-role escalation. 8 writes OK, 1 correct refusal, 0
+failures. `db:setup` reports all 17 migrations applied and every check green.
+
+The anon key (public by design) was then used for what it actually is: it fills
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`, which had been a placeholder.
 
 ---
 
@@ -649,10 +723,8 @@ flagged `is_placeholder = true` in the `settings` table.
 
 ### Still blocked
 
-- [ ] **Supabase Auth anon key.** `NEXT_PUBLIC_SUPABASE_ANON_KEY` is a
-      placeholder in `.env.local`. It is a public value, so it does not need to
-      be treated as a secret, but it must come from the dashboard before any
-      sign-in flow will work.
+- [x] **Supabase Auth anon key.** Now set in `.env.local` (public value, no
+      secret handling needed). The sign-in flow can be built against it.
 - [ ] Bank export format (CR1). Awaiting a sample bank CSV.
 - [ ] Whether `citext` should be moved out of the `public` schema. Currently
       accepted as-is; see the Phase 3 note on the remaining advisor warnings.

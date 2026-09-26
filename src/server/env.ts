@@ -33,13 +33,37 @@ export const serverEnv = {
   },
 
   /**
-   * The BYPASSRLS service-role key, used ONLY by the payroll generation path.
+   * Connection string for `samjona_service_login`, used ONLY by payroll
+   * generation via `withServiceContext`.
    *
-   * If the application connects directly via `pg` on the transaction pooler
-   * with `samjona_service_login`, this variable is not needed. It is retained
-   * for operators who prefer to provision the service connection separately.
+   * Separate from DATABASE_URL on purpose. The application role is deliberately
+   * NOT a member of the BYPASSRLS service role, so an SQL injection in any
+   * request handler cannot `set role samjona_service` and make every RLS policy
+   * in the schema decorative. The escalation is reachable only by code that can
+   * read this variable, which is server-only.
    *
-   * It must never reach a client component. See docs/security.md.
+   * Optional at startup, because a deployment that has not yet been configured
+   * for payroll should still boot and still serve staff and students. It is
+   * required the moment payroll generation is attempted, and `getServicePool`
+   * throws with that message rather than silently falling back to the
+   * application pool, which would fail with a confusing 42501 much later.
+   *
+   * Must never reach a client component. See docs/security.md.
+   */
+  get SERVICE_DATABASE_URL() {
+    return process.env.SERVICE_DATABASE_URL?.trim() || undefined;
+  },
+
+  /**
+   * The BYPASSRLS Supabase service-role key.
+   *
+   * NOT USED by any code in this repository. It is a PostgREST/Auth key and
+   * this application talks to PostgreSQL directly with `pg`, so it has no use
+   * here. It is listed so that an operator who finds it in the dashboard knows
+   * it is not needed, rather than wiring it in and creating a second, far
+   * broader path to the database than the one that is actually designed.
+   *
+   * If it is ever set, `validateConfig` reports it as a finding.
    */
   get SUPABASE_SERVICE_ROLE_KEY() {
     return process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined;
@@ -113,6 +137,41 @@ export function validateConfig(): string[] {
     problems.push(
       'DATABASE_URL looks like a service-role connection. Application requests must use ' +
         'samjona_login so that RLS applies. Only payroll generation may use the service role.',
+    );
+  }
+  if (url && url.includes('samjona_login')) {
+    problems.push(
+      'DATABASE_URL authenticates as samjona_login. The application role must be a plain ' +
+        'member of samjona_app; if it can also SET ROLE to the service role, an injection in ' +
+        'any request handler would bypass RLS entirely.',
+    );
+  }
+
+  // Payroll is not deployable without it, so say so plainly rather than
+  // letting the first payroll run fail with a 42501 that looks like a policy bug.
+  if (!process.env.SERVICE_DATABASE_URL) {
+    problems.push(
+      'SERVICE_DATABASE_URL is not set. Payroll generation will fail: payroll_runs and ' +
+        'payroll_items have no INSERT policy for the application role by design, and the ' +
+        'service pool is the only sanctioned way to write them. Everything else works ' +
+        'without it. See docs/deployment.md',
+    );
+  } else if (!process.env.SERVICE_DATABASE_URL.includes(':6543')) {
+    problems.push(
+      'SERVICE_DATABASE_URL does not appear to use the transaction pooler (port 6543). ' +
+        'Payroll generation holds a connection for the length of a run and will exhaust the ' +
+        'direct-connection limit.',
+    );
+  }
+
+  // A Supabase service-role key is a PostgREST/Auth credential. This application
+  // talks to PostgreSQL directly, so it has no use here and its presence means
+  // an unnecessary, very broad credential is sitting in the environment.
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    problems.push(
+      'SUPABASE_SERVICE_ROLE_KEY is set but no code reads it. This application connects to ' +
+        'PostgreSQL with `pg` and does not use PostgREST, so the key is an unused credential ' +
+        'with more access than anything in this system needs. Remove it.',
     );
   }
 

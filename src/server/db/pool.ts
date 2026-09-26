@@ -47,7 +47,34 @@ types.setTypeParser(20, (value: string): number => {
  */
 
 let pool: Pool | null = null;
+let servicePool: Pool | null = null;
 
+function build(connectionString: string, applicationName: string): Pool {
+  const created = new Pool({
+    connectionString,
+    // Vercel serverless: keep this small. Each concurrent function invocation
+    // may hold one connection, and Supabase's pooler has a hard ceiling.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+    // Fail fast rather than queueing forever behind an exhausted pool.
+    statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? 15_000),
+    application_name: applicationName,
+  });
+
+  // A pool-level error (e.g. an idle server closing the connection) must not
+  // crash the process.
+  created.on('error', (err) => {
+    console.error('[db] idle client error', { app: applicationName, message: err.message });
+  });
+
+  return created;
+}
+
+/**
+ * The application pool. Connects as `samjona_login`, which is a member of
+ * `samjona_app` and is fully subject to RLS. This is what every request uses.
+ */
 export function getPool(): Pool {
   if (pool) return pool;
 
@@ -59,25 +86,49 @@ export function getPool(): Pool {
     );
   }
 
-  pool = new Pool({
-    connectionString,
-    // Vercel serverless: keep this small. Each concurrent function invocation
-    // may hold one connection, and Supabase's pooler has a hard ceiling.
-    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
-    // Fail fast rather than queueing forever behind an exhausted pool.
-    statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? 15_000),
-    application_name: 'samjona-sms',
-  });
-
-  // A pool-level error (e.g. an idle server closing the connection) must not
-  // crash the process.
-  pool.on('error', (err) => {
-    console.error('[db] idle client error', { message: err.message });
-  });
-
+  pool = build(connectionString, 'samjona-sms');
   return pool;
+}
+
+/**
+ * The payroll service pool. A SEPARATE pool, deliberately, connecting as
+ * `samjona_service_login`.
+ *
+ * WHY A SECOND POOL RATHER THAN A ROLE SWITCH ON THE FIRST
+ * ------------------------------------------------------
+ * The obvious alternative is to make `samjona_login` a member of
+ * `samjona_service` and have it `set local role samjona_service` when it needs
+ * to. That was rejected on security grounds: it would put the ability to
+ * escalate to a BYPASSRLS role inside the hands of the role that serves every
+ * request. A SQL injection in any ordinary route handler would then be able to
+ * `set role samjona_service` and read or write anything, and the RLS policies
+ * that do the actual protecting in this system would be one injection away from
+ * being decorative.
+ *
+ * Separate credentials mean the escalation is not reachable from the web tier
+ * at all: only a module that reads `SERVICE_DATABASE_URL` can open this pool,
+ * and that variable is server-only and absent from the client bundle.
+ *
+ * Note that this pool does not itself hold BYPASSRLS - `rolbypassrls` is not
+ * inherited through role membership, which is exactly why this exists. The
+ * escalation is an explicit `set local role samjona_service` in
+ * `withServiceContext`, per transaction.
+ */
+export function getServicePool(): Pool {
+  if (servicePool) return servicePool;
+
+  const connectionString = process.env.SERVICE_DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      'SERVICE_DATABASE_URL is not set. It is required for payroll generation, which is ' +
+        'deliberately not writable by the application role. See docs/deployment.md',
+    );
+  }
+
+  // Smaller than the application pool: only payroll generation uses it, and it
+  // holds a connection for the whole of a potentially long run.
+  servicePool = build(connectionString, 'samjona-sms-payroll');
+  return servicePool;
 }
 
 export type Queryable = Pick<PoolClient, 'query'>;
@@ -116,9 +167,14 @@ export async function closePool(): Promise<void> {
     await pool.end();
     pool = null;
   }
+  if (servicePool) {
+    await servicePool.end();
+    servicePool = null;
+  }
 }
 
 /** Test hook. */
 export function resetPoolForTests(): void {
   pool = null;
+  servicePool = null;
 }

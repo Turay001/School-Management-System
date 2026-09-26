@@ -11,7 +11,7 @@ import {
   PreconditionError,
   ValidationError,
 } from '../../lib/errors';
-import { getPool, type Queryable } from './pool';
+import { getPool, getServicePool, type Queryable } from './pool';
 
 /**
  * Transaction wrapper and RLS context.
@@ -45,9 +45,16 @@ export interface TransactionOptions {
 
 const DEFAULT_TX_TIMEOUT_MS = 20_000;
 
+/**
+ * Which pool a transaction runs on. `service` is the ONLY way to obtain a
+ * BYPASSRLS role, and it is reachable from exactly one place in the codebase.
+ */
+type PoolKind = 'app' | 'service';
+
 export async function withTransaction<T>(
   options: TransactionOptions,
   fn: (tx: Queryable, ctx: { correlationId: string }) => Promise<T>,
+  kind: PoolKind = 'app',
 ): Promise<T> {
   const correlationId = options.correlationId ?? newCorrelationId();
 
@@ -57,7 +64,7 @@ export async function withTransaction<T>(
     return fn(options.existingClient, { correlationId });
   }
 
-  const client = await getPool().connect();
+  const client = kind === 'service' ? await getServicePool().connect() : await getPool().connect();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS;
   let released = false;
 
@@ -115,18 +122,46 @@ export async function withUserContext<T>(
  * Run with the BYPASSRLS service role. RESERVED FOR PAYROLL GENERATION.
  *
  * Before using this, confirm the operation genuinely cannot be expressed as
- * a user-context operation. It exists because payroll_runs and payroll_items
- * intentionally have no INSERT/UPDATE policy, so a request handler can never
- * write them no matter what it passes to a permission check.
+ * a user-context operation. It exists because payroll_periods, payroll_runs
+ * and payroll_items intentionally have no INSERT/UPDATE policy, so a request
+ * handler can never write them no matter what it passes to a permission check.
+ *
+ * TWO THINGS ARE NEEDED AND BOTH ARE HERE
+ * --------------------------------------
+ * This runs on the separate service pool, so the connection is
+ * `samjona_service_login` rather than `samjona_login`, AND it issues
+ * `set local role samjona_service`. Neither alone is sufficient:
+ *
+ *   - The pool alone buys nothing. `samjona_service_login` is a member of
+ *     `samjona_service`, but `rolbypassrls` is a role ATTRIBUTE and is not
+ *     inherited through membership, so the login role on its own is blocked by
+ *     RLS exactly like any other. This was verified on the live database:
+ *     connecting directly as `samjona_service_login` and inserting into
+ *     `payroll_periods` fails with 42501.
+ *
+ *   - The role switch alone buys nothing either, because the previous version
+ *     of this function used the application pool and therefore could not
+ *     escalate at all: it set a GUC, which is not a privilege. `SET ROLE` on
+ *     a connection authenticated as `samjona_login` would fail, since it is not
+ *     a member of the service role - deliberately, so that no request handler
+ *     can reach this role.
+ *
+ * `SET LOCAL` so the escalation is confined to this transaction and a pooled
+ * connection cannot carry it to the next caller.
  */
 export async function withServiceContext<T>(
   fn: (tx: Queryable, ctx: { correlationId: string }) => Promise<T>,
   options: TransactionOptions = {},
 ): Promise<T> {
-  return withTransaction(options, async (tx, ctx) => {
-    await tx.query('select set_config($1, $2, true)', ['app.service_context', 'payroll']);
-    return fn(tx, ctx);
-  });
+  return withTransaction(
+    options,
+    async (tx, ctx) => {
+      await tx.query('set local role samjona_service');
+      await tx.query('select set_config($1, $2, true)', ['app.service_context', 'payroll']);
+      return fn(tx, ctx);
+    },
+    'service',
+  );
 }
 
 /** No role set. Use only for connectivity checks and startup reads. */

@@ -457,6 +457,15 @@ async function main(): Promise<void> {
   // Payroll, as the service role, because that is the only role allowed to
   // write it. Probed as the app role it would fail on a deliberate policy and be
   // read as a bug.
+  //
+  // The probe must mirror `withServiceContext` exactly: CONNECT as the service
+  // login, then `set local role samjona_service`. Connecting as the login and
+  // stopping there tests nothing useful - `samjona_service_login` is a member
+  // of `samjona_service`, but `rolbypassrls` is a role attribute and is not
+  // inherited through membership, so the login on its own is blocked by RLS
+  // exactly like the application role. That has been verified on this very
+  // database; it is the second production bug this suite exists to catch, and
+  // the escalation is the real production path.
   const svcPassword = setup.SAMJONA_SERVICE_LOGIN_PASSWORD;
   console.log('\n[3/3] Write probes as the payroll service role');
   if (!svcPassword) {
@@ -476,6 +485,9 @@ async function main(): Promise<void> {
       await svcProbe({
         name: 'payroll_periods + payroll_runs INSERT (audited)',
         run: async () => {
+          // The escalation, per transaction. `set LOCAL` so a pooled connection
+          // cannot carry it to the next caller - same as withServiceContext.
+          await svc.query('set local role samjona_service');
           const period = await svc.query<{ id: string }>(
             `insert into payroll_periods (year, month) values (2099, 12) returning id`,
           );
