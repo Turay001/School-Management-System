@@ -81,7 +81,9 @@ describe('basic calculation', () => {
 
   it('avoids floating point drift on a value that would break with floats', () => {
     // 0.1 + 0.2 !== 0.3 in IEEE-754. In minor units this is exact.
-    const line = calculateEmployee(input({ basicSalary: 10, allowances: 20, overtime: 0, otherEarnings: 0 }));
+    const line = calculateEmployee(
+      input({ basicSalary: 10, allowances: 20, overtime: 0, otherEarnings: 0 }),
+    );
     expect(line.gross).toBe(30);
   });
 });
@@ -173,7 +175,12 @@ describe('run totals', () => {
     const { lines, totals } = calculatePayroll([
       input({ employeeId: 'a', employeeCode: 'EMP-0001', basicSalary: 450000 }),
       input({ employeeId: 'b', employeeCode: 'EMP-0002', basicSalary: 500000, allowances: 50000 }),
-      input({ employeeId: 'c', employeeCode: 'EMP-0003', basicSalary: 300000, recurringDeductions: 20000 }),
+      input({
+        employeeId: 'c',
+        employeeCode: 'EMP-0003',
+        basicSalary: 300000,
+        recurringDeductions: 20000,
+      }),
     ]);
 
     expect(totals.employeeCount).toBe(3);

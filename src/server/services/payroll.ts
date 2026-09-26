@@ -1,10 +1,4 @@
-import {
-  add,
-  multiplyByRate,
-  subtract,
-  sum,
-  type MinorUnits,
-} from '../db/money';
+import { add, multiplyByRate, subtract, sum, type MinorUnits } from '../db/money';
 
 /**
  * PAYROLL CALCULATION ENGINE
@@ -129,8 +123,7 @@ export function applyStatutoryRules(
   for (const rule of rules) {
     if (!rule.enabled) continue;
 
-    const base =
-      rule.kind === 'percentage_of_basic' ? input.basicSalary : gross;
+    const base = rule.kind === 'percentage_of_basic' ? input.basicSalary : gross;
 
     // A rule with a threshold that is not met contributes nothing.
     if (rule.threshold !== undefined && rule.threshold !== null && base < rule.threshold) {
@@ -162,10 +155,7 @@ export function applyStatutoryRules(
  * Pure and total: same input always yields the same output, with no clock, no
  * randomness, and no I/O.
  */
-export function calculateEmployee(
-  input: PayrollInput,
-  rules: StatutoryRule[] = [],
-): ComputedLine {
+export function calculateEmployee(input: PayrollInput, rules: StatutoryRule[] = []): ComputedLine {
   // Reject impossible input loudly rather than producing a negative salary.
   if (input.basicSalary < 0) {
     throw new Error(
@@ -286,7 +276,9 @@ export function verifyTotals(
   const employer = sum(lines.map((l) => l.employerCosts));
 
   if (lines.length !== totals.employeeCount) {
-    problems.push(`Employee count mismatch: ${lines.length} lines vs ${totals.employeeCount} recorded`);
+    problems.push(
+      `Employee count mismatch: ${lines.length} lines vs ${totals.employeeCount} recorded`,
+    );
   }
   if (gross !== totals.totalGross) {
     problems.push(`Gross mismatch: lines total ${gross} but header records ${totals.totalGross}`);
@@ -317,9 +309,7 @@ export function verifyTotals(
       );
     }
     if (line.net !== subtract(line.gross, line.deductions)) {
-      problems.push(
-        `${line.employeeCode}: net ${line.net} does not equal gross minus deductions`,
-      );
+      problems.push(`${line.employeeCode}: net ${line.net} does not equal gross minus deductions`);
     }
     if (line.net < 0) {
       problems.push(`${line.employeeCode}: net pay is negative`);

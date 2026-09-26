@@ -67,7 +67,10 @@ beforeAll(async () => {
     [TEACHER, 'Teacher', 'teacher'],
     [BURSAR, 'Bursar', 'bursar'],
   ] as const) {
-    await db.query('insert into auth.users (id, email) values ($1,$2)', [id, `${name}@example.test`]);
+    await db.query('insert into auth.users (id, email) values ($1,$2)', [
+      id,
+      `${name}@example.test`,
+    ]);
     await db.query('insert into app_users (id, username, full_name, role) values ($1,$2,$3,$4)', [
       id,
       name.toLowerCase(),
@@ -135,7 +138,10 @@ beforeAll(async () => {
 
   // Linked last: app_users.employee_id is a foreign key, so the employee row
   // must exist before the app user can point at it.
-  await db.query('update app_users set employee_id = $1 where id = $2', [TEACHER_EMPLOYEE, TEACHER]);
+  await db.query('update app_users set employee_id = $1 where id = $2', [
+    TEACHER_EMPLOYEE,
+    TEACHER,
+  ]);
 
   // A fee assignment with no payment, so the balance view has something to
   // return and "0 rows" cannot pass for a working filter. Amounts live on
@@ -216,11 +222,11 @@ describe('views must not bypass RLS', () => {
     // Asserting the colleague's code is absent is the point. Asserting only
     // `toHaveLength(1)` would still pass if the view were returning the
     // colleague and hiding the teacher.
-    const rows = await selectAsApp(
+    const rows = (await selectAsApp(
       'select employee_code, base_salary from v_employee_current_salary',
       'teacher',
       TEACHER,
-    ) as Array<{ employee_code: string; base_salary: number | string }>;
+    )) as Array<{ employee_code: string; base_salary: number | string }>;
 
     expect(rows.map((r) => r.employee_code)).toEqual(['EMP-0002']);
     expect(Number(rows[0]!.base_salary)).toBe(300000);
@@ -229,11 +235,11 @@ describe('views must not bypass RLS', () => {
   it('shows every salary to a proprietor through the view', async () => {
     // Proves the test above is not passing merely because the view is empty or
     // because security_invoker was set in a way that hides everything.
-    const rows = await selectAsApp(
+    const rows = (await selectAsApp(
       'select employee_code, base_salary from v_employee_current_salary',
       'proprietor',
       PROPRIETOR,
-    ) as Array<{ employee_code: string; base_salary: string }>;
+    )) as Array<{ employee_code: string; base_salary: string }>;
 
     expect(rows.map((r) => r.employee_code).sort()).toEqual(['EMP-0001', 'EMP-0002']);
   });
@@ -261,11 +267,11 @@ describe('views must not bypass RLS', () => {
     // bursar reconciles against; a teacher has no business reading another
     // family's fee position. Read as the bursar the row must be present, so
     // this cannot pass just because the view is empty.
-    const bursarRows = await selectAsApp(
+    const bursarRows = (await selectAsApp(
       'select student_id, balance from v_student_fee_balances',
       'bursar',
       BURSAR,
-    ) as Array<{ student_id: string; balance: number | string }>;
+    )) as Array<{ student_id: string; balance: number | string }>;
 
     expect(bursarRows.map((r) => r.student_id)).toEqual([STUDENT]);
     expect(Number(bursarRows[0]!.balance)).toBe(100000);

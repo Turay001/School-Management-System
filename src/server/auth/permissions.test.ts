@@ -72,7 +72,9 @@ describe('separation of duties', () => {
       'audit:read',
       'users:manage',
     ] as const) {
-      expect(roleHasPermission('teacher', permission), `teacher must not have ${permission}`).toBe(false);
+      expect(roleHasPermission('teacher', permission), `teacher must not have ${permission}`).toBe(
+        false,
+      );
     }
   });
 

@@ -1,0 +1,18 @@
+# Vendored third-party content. Reformatting a file we do not own would make
+# every future skill update show up as a diff of our own making, and the noise
+# would bury the substantive change that came with it.
+.agents/
+
+# Build output and caches
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Supabase CLI scratch
+supabase/.temp/
+
+# Generated
+package-lock.json

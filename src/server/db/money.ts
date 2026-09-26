@@ -79,11 +79,7 @@ export function toMajor(minor: MinorUnits, minorUnits = 2): number {
 }
 
 /** Format minor units for human display, e.g. `NLe 4,500.00`. */
-export function format(
-  minor: MinorUnits,
-  currency: CurrencyCode = 'NLe',
-  minorUnits = 2,
-): string {
+export function format(minor: MinorUnits, currency: CurrencyCode = 'NLe', minorUnits = 2): string {
   assertMinor(minor);
   const negative = minor < 0;
   const abs = Math.abs(minor);
@@ -198,8 +194,7 @@ export function multiplyByRate(amount: MinorUnits, rate: number): MinorUnits {
   }
   // half-up on a non-negative product; mirror for negatives so that
   // -0.5 rounds to -1 rather than -0.
-  const rounded =
-    product >= 0 ? Math.floor(product + 0.5) : -Math.floor(Math.abs(product) + 0.5);
+  const rounded = product >= 0 ? Math.floor(product + 0.5) : -Math.floor(Math.abs(product) + 0.5);
   return assertMinor(rounded);
 }
 

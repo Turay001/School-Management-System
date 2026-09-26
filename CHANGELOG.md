@@ -3,8 +3,8 @@
 > **This file is a decision record, not a substitute for Git history.**
 >
 > It was written before Git was available on the development machine, and it is
-> kept because it records *why* each change was made, including the ones that
-> were wrong the first time. Git history records *what* changed, but it cannot
+> kept because it records _why_ each change was made, including the ones that
+> were wrong the first time. Git history records _what_ changed, but it cannot
 > record that a view bypassed RLS because of how a view resolves privileges, or
 > that a `LIKE ... ESCAPE` filter matched nothing.
 >
@@ -16,6 +16,40 @@
 **Supabase PostgreSQL is the primary database and source of truth for SAMJONA.**
 Google Sheets was removed from the data path. It may return only as an optional
 import/export/reporting integration, never as the authoritative store.
+
+---
+
+## Current verified state
+
+Measured, not remembered. Re-run this before believing any number further down,
+because the per-phase sections below are a historical record and some of their
+figures are frozen at the value they had when that phase was written.
+
+```
+npm run typecheck     exit 0
+npm run lint          exit 0
+npm run test          179 passed / 179, 10 files
+npm run format:check  exit 0
+npm run verify        green
+git status            clean, 13 commits on master
+```
+
+| Test file                               | Tests |
+| --------------------------------------- | ----- |
+| `db/__tests__/integrity.test.ts`        | 44    |
+| `services/payroll.test.ts`              | 27    |
+| `lib/errors.test.ts`                    | 23    |
+| `auth/permissions.test.ts`              | 17    |
+| `db/__tests__/consistency.test.ts`      | 16    |
+| `db/__tests__/roles.test.ts`            | 14    |
+| `db/__tests__/policy-hardening.test.ts` | 13    |
+| `db/__tests__/migrations.test.ts`       | 9     |
+| `db/__tests__/rls.test.ts`              | 9     |
+| `db/__tests__/views.test.ts`            | 7     |
+
+Two commands still fail, both deliberately and both recorded below:
+`npm run build` (there is no `app/` directory because no UI exists) and, before
+Phase 4, `npm run format:check`.
 
 ---
 
@@ -87,6 +121,7 @@ the storage layer was built directly against PostgreSQL.
 npm run typecheck   clean
 npm run lint        clean
 npm test            134 passing, against a real PostgreSQL engine
+                     (the current total is 179; see _Current verified state_)
   9  migration tests      - all migrations apply, all tables/views exist, RLS configured
  44  integrity tests      - immutability, workflow, reconciliation, ledger, audit
   9  RLS tests            - policies enforce; the service role still cannot alter approved payroll
@@ -163,7 +198,7 @@ actually run is a far worse failure than one still marked pending.
 
 **Commit**
 
-`a759586` refactor(db): create login roles from a setup script, not migrations
+`20747cf` refactor(db): create login roles from a setup script, not migrations
 
 ---
 
@@ -230,11 +265,11 @@ read every employee's bank account number.**
 Demonstrated, not assumed. `src/server/db/__tests__/views.test.ts` seeds a bank
 account and reads it through the view as a `teacher`:
 
-| | before 015 | after 015 |
-| -------------------- | ---------- | --------- |
-| bank numbers, teacher | 1 row | 0 rows |
-| bank numbers, proprietor | 1 row | 1 row |
-| salary rows, teacher | 0 rows | 0 rows |
+|                          | before 015 | after 015 |
+| ------------------------ | ---------- | --------- |
+| bank numbers, teacher    | 1 row      | 0 rows    |
+| bank numbers, proprietor | 1 row      | 1 row     |
+| salary rows, teacher     | 0 rows     | 0 rows    |
 
 Verified on the **live database** as `samjona_login` with a real app context, not
 only in tests. The five tests that assert this were confirmed to fail when
@@ -258,7 +293,7 @@ detect. The policies really were enabled; the bypass was one layer up.
    policies. Permissions are byte-for-byte identical; the coupling is gone. The
    read rule is now its own named policy that can be tightened independently.
 
-   *This fix introduced a regression, which is worth recording.* The first draft
+   _This fix introduced a regression, which is worth recording._ The first draft
    split into `INSERT` and `UPDATE` only and forgot to carry the read access
    across. That left `student_fee_assignments` with **no `SELECT` policy at
    all**, and `v_student_fee_balances` silently returned nothing to the Bursar.
@@ -301,7 +336,8 @@ and the change is not.
 
 ### Tests
 
-156 passing, up from 134. Three new files:
+156 passing, up from 134. (The current total is 179; see _Current verified
+state_.) Three new files:
 
 - `views.test.ts` (7) - the view RLS bypass, proven by reading rows as a role
 - `policy-hardening.test.ts` (12) - the policy split and function hardening
@@ -317,13 +353,66 @@ asserting "rejects" would pass even with the policy wide open.
 ### Commits
 
 ```
-045a831 fix(db)!: make every view security_invoker so views stop bypassing RLS
-cd0a329 fix(db)!: split for-all policies and pin search_path on our functions
+2351d82 fix(db)!: make every view security_invoker so views stop bypassing RLS
+9995689 fix(db)!: split for-all policies and pin search_path on our functions
 ```
 
 The two `!` markers mark commits that change what an authenticated
 low-privilege role can see. Both are behaviour-preserving in intent, but 016 was
 not on its first attempt, which is the reason its regression test exists.
+
+---
+
+## Phase 4 — Formatting, and the line-ending trap behind it
+
+`npm run format:check` had been failing on 28 files. It was left alone through
+Phases 2 and 3 on purpose: with no Git history a whole-repo reformat would have
+produced one enormous commit in which the substantive work was invisible. The
+repository now exists, so the reformat can be isolated and reviewed on its own.
+
+### The bug that was hiding under the formatting debt
+
+Formatting the tree turned `format:check` green — and then revealed that
+**green here was a lie that only survived until the next checkout.**
+
+`.gitattributes` set `*.ts text` with **no `eol`**, documented as "LF in the
+repository, native in the working tree". But `core.autocrlf` is `true` on this
+machine (the Git default on Windows), so "native in the working tree" means
+CRLF. Prettier is configured `endOfLine: lf`. Therefore:
+
+- a freshly formatted tree passed `format:check`, and
+- `git checkout` would rewrite every `.ts` file to CRLF, after which
+  `format:check` fails on every one of them,
+- for a line ending nobody had chosen and nobody would ever see in a diff.
+
+The same hole covered every file with an extension the rules did not name.
+`*.gitignore`, `.env.setup.example` and `supabase/config.toml` were already
+sitting on disk with CRLF, because `text=auto` alone does not pin an ending.
+
+Fixed by pinning the default once, `* text=auto eol=lf`, rather than extending
+the per-extension list, which had already failed once by omission. Verified by
+deleting the three CRLF files, re-checking them out of the index, and confirming
+every tracked file is now LF with an empty `git diff`.
+
+**A green check that depends on unstated machine state is not a passing check.**
+This one would have failed on a colleague's machine, on CI, and in a fresh clone,
+while passing here.
+
+### `.prettierignore`
+
+The vendored Supabase skill under `.agents/` is third-party content. Reformatting
+it would make every future skill update arrive as a diff of our own making, so it
+is ignored rather than rewritten.
+
+### Also in this phase
+
+This log was carrying three commit hashes that **do not exist in the repository**
+— the history was rebuilt after it was written, and the hashes were not
+updated. A decision record that points at unreachable commits is worse than one
+that admits it is out of date, so they now match `master`. A _Current verified
+state_ table was added at the top, because three separate places in this file
+quoted test totals that had drifted (134, 156, and a claim that nine files
+failed formatting when the real number was 28).
 
 ---
 
@@ -375,7 +464,8 @@ flagged `is_placeholder = true` in the `settings` table.
       verified. This one mattered more than it looked: on this project
       `postgres` holds `BYPASSRLS`, so an app connecting as `postgres` would
       have had every policy in the schema silently inert.
-- [x] Git installed. The repository itself is not yet initialised.
+- [x] Git installed and the repository initialised. Twelve commits on `master`,
+      each one individually verified green. No remote is configured yet.
 
 ### Still blocked
 
@@ -417,14 +507,7 @@ with no building on it.
 interface has been built. `npm run verify` omits `build` for this reason,
 deliberately, rather than pretending it passes.
 
-`npm run format:check` fails. This is pre-existing, not a regression: nine files
-that predate Phase 2 (`src/lib/errors.ts`, `src/server/db/money.ts`,
-`src/server/db/transaction.ts`, `src/server/services/payroll.ts` and their
-tests) have never been Prettier-formatted. Phase 2 and 3 files are formatted.
-The rest was left alone deliberately, because with no history a whole-repo
-reformat would have buried the substantive changes and left no way for anyone to
-review what actually changed. The repository now exists, so `npm run format` can
-be its own commit.
+`npm run format:check` now passes (see Phase 4).
 
 ### Outstanding risk
 
@@ -441,4 +524,3 @@ Two role passwords were generated during setup and live only in `.env.setup`:
 `samjona_login` and `samjona_service_login`. They are rotated on every
 `db:setup` run, so the safe procedure is to change the value in `.env.setup` and
 re-run, rather than rotating in the database alone.
-

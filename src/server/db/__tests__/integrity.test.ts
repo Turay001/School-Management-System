@@ -29,7 +29,12 @@ async function seedUsers(): Promise<void> {
     await db.query(
       `insert into app_users (id, username, full_name, role)
        values ($1, $2, $3, $4)`,
-      [id, name.toLowerCase(), name, name === 'Proprietor' ? 'proprietor' : name === 'Bursar' ? 'bursar' : 'teacher'],
+      [
+        id,
+        name.toLowerCase(),
+        name,
+        name === 'Proprietor' ? 'proprietor' : name === 'Bursar' ? 'bursar' : 'teacher',
+      ],
     );
   }
 }
@@ -98,10 +103,13 @@ async function addItem(
   const overtime = amounts.overtime ?? 0;
   const deductions = amounts.deductions ?? 0;
   const gross = amounts.basic + allowances + overtime;
-  const { rows } = await db.query<{ employee_name: string; position: string; department: string | null }>(
-    'select full_name as employee_name, position, department from employees where id = $1',
-    [employeeId],
-  );
+  const { rows } = await db.query<{
+    employee_name: string;
+    position: string;
+    department: string | null;
+  }>('select full_name as employee_name, position, department from employees where id = $1', [
+    employeeId,
+  ]);
   const emp = rows[0]!;
   await db.query(
     `insert into payroll_items
@@ -119,7 +127,11 @@ async function addItem(
       allowances,
       overtime,
       deductions,
-      JSON.stringify({ bankName: 'Test Bank', accountName: emp.employee_name, accountNumber: '0001' }),
+      JSON.stringify({
+        bankName: 'Test Bank',
+        accountName: emp.employee_name,
+        accountNumber: '0001',
+      }),
       gross,
       gross - deductions,
     ],
@@ -162,7 +174,10 @@ describe('employee lifecycle', () => {
 
   it('allows deactivation by status while preserving the record', async () => {
     const id = await createEmployee({ name: 'Departing Employee' });
-    await db.query(`update employees set status = 'terminated', termination_date = date '2026-08-31' where id = $1`, [id]);
+    await db.query(
+      `update employees set status = 'terminated', termination_date = date '2026-08-31' where id = $1`,
+      [id],
+    );
     const { rows } = await db.query<{ status: string; termination_date: string }>(
       'select status, termination_date from employees where id = $1',
       [id],
@@ -217,9 +232,9 @@ describe('employee lifecycle', () => {
 
   it('refuses to delete salary history', async () => {
     const id = await createEmployee({ name: 'Salary Delete Employee' });
-    await expect(db.query('delete from employee_salary_history where employee_id = $1', [id])).rejects.toThrow(
-      /cannot be deleted/i,
-    );
+    await expect(
+      db.query('delete from employee_salary_history where employee_id = $1', [id]),
+    ).rejects.toThrow(/cannot be deleted/i);
   });
 });
 
@@ -251,7 +266,10 @@ describe('bank account security', () => {
   });
 
   it('never writes a full account number to the audit log', async () => {
-    const id = await createEmployee({ name: 'Audit Bank Employee', accountNumber: 'SECRET-99887766' });
+    const id = await createEmployee({
+      name: 'Audit Bank Employee',
+      accountNumber: 'SECRET-99887766',
+    });
     await db.query(
       `update employee_bank_accounts set bank_name = 'Renamed Bank' where employee_id = $1`,
       [id],
@@ -318,9 +336,7 @@ describe('payroll workflow', () => {
   it('rejects a duplicate period', async () => {
     await createRun(2026, 10);
     await expect(
-      db.query(
-        `insert into payroll_periods (year, month) values (2026, 10)`,
-      ),
+      db.query(`insert into payroll_periods (year, month) values (2026, 10)`),
     ).rejects.toThrow(/payroll_periods_unique|duplicate key/i);
   });
 
@@ -457,7 +473,10 @@ describe('approved payroll is immutable  *** the central guarantee ***', () => {
     await addItem(source.id, emp, { basic: 100000 });
 
     await expect(
-      db.query('update payroll_items set payroll_run_id = $1 where payroll_run_id = $2', [target.id, source.id]),
+      db.query('update payroll_items set payroll_run_id = $1 where payroll_run_id = $2', [
+        target.id,
+        source.id,
+      ]),
     ).rejects.toThrow(/cannot be moved between runs/i);
   });
 
@@ -478,8 +497,14 @@ describe('approved payroll is immutable  *** the central guarantee ***', () => {
     await addItem(run.id, emp, { basic: 250000 });
     await approveRun(run.id);
 
-    await db.query(`update payroll_runs set status = 'exported', exported_at = now() where id = $1`, [run.id]);
-    const { rows } = await db.query<{ status: string }>('select status from payroll_runs where id = $1', [run.id]);
+    await db.query(
+      `update payroll_runs set status = 'exported', exported_at = now() where id = $1`,
+      [run.id],
+    );
+    const { rows } = await db.query<{ status: string }>(
+      'select status from payroll_runs where id = $1',
+      [run.id],
+    );
     expect(rows[0]!.status).toBe('exported');
   });
 });
@@ -498,7 +523,10 @@ describe('payroll totals reconcile', () => {
       total_gross: number;
       total_deductions: number;
       total_net: number;
-    }>('select employee_count, total_gross, total_deductions, total_net from payroll_runs where id = $1', [run.id]);
+    }>(
+      'select employee_count, total_gross, total_deductions, total_net from payroll_runs where id = $1',
+      [run.id],
+    );
 
     // 400000+50000 = 450000 gross, -20000 = 430000 net
     // 600000+25000 = 625000 gross, -0      = 625000 net
@@ -579,7 +607,9 @@ describe('fees ledger and balances', () => {
   }
 
   async function tuitionType(): Promise<string> {
-    const { rows } = await db.query<{ id: string }>(`select id from fee_types where name = 'Tuition'`);
+    const { rows } = await db.query<{ id: string }>(
+      `select id from fee_types where name = 'Tuition'`,
+    );
     return rows[0]!.id;
   }
 
@@ -868,7 +898,10 @@ describe('students', () => {
     );
     const studentId = studentRows[0]!.id;
 
-    await db.query('update students set class_id = $1 where id = $2', [classRows[0]!.id, studentId]);
+    await db.query('update students set class_id = $1 where id = $2', [
+      classRows[0]!.id,
+      studentId,
+    ]);
     await expect(
       db.query('update students set class_id = $1 where id = $2', [classRows[1]!.id, studentId]),
     ).rejects.toThrow(/one class per year/i);

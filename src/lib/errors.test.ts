@@ -115,7 +115,12 @@ describe('status codes', () => {
     ['no permission', () => new ForbiddenError(), 403, 'AUTH_FORBIDDEN'],
     ['missing row', () => new NotFoundError('Student'), 404, 'NOT_FOUND'],
     ['duplicate or illegal transition', () => new ConflictError('taken'), 409, 'CONFLICT'],
-    ['business rule violated', () => new PreconditionError('not calculated'), 422, 'PRECONDITION_FAILED'],
+    [
+      'business rule violated',
+      () => new PreconditionError('not calculated'),
+      422,
+      'PRECONDITION_FAILED',
+    ],
     ['bad input', () => new ValidationError('bad'), 400, 'VALIDATION_FAILED'],
     ['too many requests', () => new RateLimitError(30), 429, 'RATE_LIMITED'],
     ['unexpected', () => new InternalError('ref-9'), 500, 'INTERNAL'],

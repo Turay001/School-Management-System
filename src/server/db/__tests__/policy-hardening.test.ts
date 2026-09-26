@@ -54,7 +54,10 @@ beforeAll(async () => {
     [PROPRIETOR, 'Proprietor', 'proprietor'],
     [TEACHER, 'Teacher', 'teacher'],
   ] as const) {
-    await db.query('insert into auth.users (id, email) values ($1,$2)', [id, `${name}@example.test`]);
+    await db.query('insert into auth.users (id, email) values ($1,$2)', [
+      id,
+      `${name}@example.test`,
+    ]);
     await db.query('insert into app_users (id, username, full_name, role) values ($1,$2,$3,$4)', [
       id,
       name.toLowerCase(),

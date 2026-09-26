@@ -91,7 +91,10 @@ describe('the permission matrix covers every role', () => {
   it('has an entry for every database role', async () => {
     const dbRoles = await enumValues('app_role');
     for (const role of dbRoles) {
-      expect(ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS], `missing ${role}`).toBeDefined();
+      expect(
+        ROLE_PERMISSIONS[role as keyof typeof ROLE_PERMISSIONS],
+        `missing ${role}`,
+      ).toBeDefined();
     }
   });
 });

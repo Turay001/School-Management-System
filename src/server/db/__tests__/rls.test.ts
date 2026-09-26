@@ -58,7 +58,10 @@ beforeAll(async () => {
     [PROPRIETOR, 'Proprietor', 'proprietor'],
     [TEACHER, 'Teacher User', 'teacher'],
   ] as const) {
-    await db.query('insert into auth.users (id, email) values ($1, $2)', [id, `${name}@example.test`]);
+    await db.query('insert into auth.users (id, email) values ($1, $2)', [
+      id,
+      `${name}@example.test`,
+    ]);
     await db.query('insert into app_users (id, username, full_name, role) values ($1,$2,$3,$4)', [
       id,
       name.toLowerCase().replace(/\s+/g, '_'),
@@ -80,7 +83,10 @@ beforeAll(async () => {
     await db.query('update employees set id = $1 where full_name = $2', [id, name]);
   }
 
-  await db.query('update app_users set employee_id = $1 where id = $2', [CLASS_TEACHER_EMP, TEACHER]);
+  await db.query('update app_users set employee_id = $1 where id = $2', [
+    CLASS_TEACHER_EMP,
+    TEACHER,
+  ]);
 
   const { rows: yearRows } = await db.query<{ id: string }>(
     'select id from academic_years where is_current limit 1',
@@ -147,11 +153,35 @@ describe('row level security is enforced, not merely enabled', () => {
 
     // The Principal can see the staff list but must NOT see bank details.
     // This is the whole reason bank data lives in its own table.
-    expect(await visibleCount('select count(*)::text as count from employee_bank_accounts', 'principal', PROPRIETOR)).toBe(0);
-    expect(await visibleCount('select count(*)::text as count from employee_bank_accounts', 'teacher', TEACHER)).toBe(0);
+    expect(
+      await visibleCount(
+        'select count(*)::text as count from employee_bank_accounts',
+        'principal',
+        PROPRIETOR,
+      ),
+    ).toBe(0);
+    expect(
+      await visibleCount(
+        'select count(*)::text as count from employee_bank_accounts',
+        'teacher',
+        TEACHER,
+      ),
+    ).toBe(0);
     // ...while the roles that prepare a payment can.
-    expect(await visibleCount('select count(*)::text as count from employee_bank_accounts', 'proprietor', PROPRIETOR)).toBe(1);
-    expect(await visibleCount('select count(*)::text as count from employee_bank_accounts', 'bursar', PROPRIETOR)).toBe(1);
+    expect(
+      await visibleCount(
+        'select count(*)::text as count from employee_bank_accounts',
+        'proprietor',
+        PROPRIETOR,
+      ),
+    ).toBe(1);
+    expect(
+      await visibleCount(
+        'select count(*)::text as count from employee_bank_accounts',
+        'bursar',
+        PROPRIETOR,
+      ),
+    ).toBe(1);
   });
 
   it('limits a teacher to students in their own class', async () => {

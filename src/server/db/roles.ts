@@ -145,19 +145,12 @@ export async function upsertLoginRole(db: Queryable, spec: LoginRoleSpec): Promi
     rolsuper: boolean;
     rolcreatedb: boolean;
     rolcreaterole: boolean;
-  }>(
-    `select rolsuper, rolcreatedb, rolcreaterole from pg_roles where rolname = $1`,
-    [loginRole],
-  );
+  }>(`select rolsuper, rolcreatedb, rolcreaterole from pg_roles where rolname = $1`, [loginRole]);
 
   const attrs = attributes.rows[0];
   if (attrs?.rolsuper || attrs?.rolcreatedb || attrs?.rolcreaterole) {
     try {
-      await runFormatted(
-        db,
-        'alter role %I with nosuperuser nocreatedb nocreaterole',
-        [loginRole],
-      );
+      await runFormatted(db, 'alter role %I with nosuperuser nocreatedb nocreaterole', [loginRole]);
     } catch (err) {
       throw new Error(
         `role "${loginRole}" has excessive privileges ` +

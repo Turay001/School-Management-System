@@ -1,12 +1,19 @@
-# Normalise line endings in the repository, not in the working tree.
+# Line endings: LF everywhere, in the repository AND in the working tree.
 #
-# Without this, Git on Windows checks out CRLF, and every file shows as modified
-# after any tool rewrites it with LF. That turns a one-line change into a
-# whole-file diff and makes `git diff` useless for review.
+# `text=auto` lets Git detect text vs binary. `eol=lf` pins the working tree to
+# LF regardless of platform or `core.autocrlf`.
 #
-# `text=auto` lets Git detect text vs binary. The explicit rules below matter for
-# the files where a naive auto-detection would be wrong.
-* text=auto
+# This is set as the default rather than per extension because the per-extension
+# version had a hole in it: files with no covered extension - `.gitignore`,
+# `.toml`, future dotfiles - fell back to `text=auto` alone, so with
+# core.autocrlf=true (the Git default on Windows) they checked out as CRLF. Then
+# any tool that rewrote them, and every `git diff` touching them, produced a
+# whole-file diff for a one-line change. Three files were already in that state.
+#
+# `eol=lf` also makes the working tree agree with Prettier's `endOfLine: lf`.
+# Without it, `format:check` passed on a freshly formatted tree and then failed
+# on every source file after the next checkout, for a line ending nobody chose.
+* text=auto eol=lf
 
 # SQL migrations: LF always. These are applied to Postgres through tooling that
 # reads bytes; a stray CRLF inside a dollar-quoted function body is a real
@@ -15,20 +22,6 @@
 
 # Shell scripts must be LF or they fail on Unix with "bad interpreter".
 *.sh text eol=lf
-
-# JSON, YAML, Markdown.
-*.json text eol=lf
-*.yml text eol=lf
-*.yaml text eol=lf
-*.md text eol=lf
-
-# TypeScript and friends: LF in the repository, native in the working tree.
-*.ts text
-*.tsx text
-*.js text
-*.mjs text
-*.cjs text
-*.css text
 
 # Lockfiles are generated; leave them alone entirely.
 package-lock.json -text

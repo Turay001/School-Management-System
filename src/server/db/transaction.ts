@@ -251,7 +251,8 @@ function describeUniqueViolation(constraint: string): string {
     return 'This employee already has a current salary record. Close the existing one before adding another.';
   if (constraint.includes('one_primary'))
     return 'This employee already has an active primary bank account. Deactivate it first.';
-  if (constraint.includes('one_current')) return 'Another academic year is already marked as current.';
+  if (constraint.includes('one_current'))
+    return 'Another academic year is already marked as current.';
   if (constraint.includes('period_revision'))
     return 'A payroll run already exists for this month at this revision. Reopen the existing run instead of creating another.';
   if (constraint.includes('unique_employee_per_run'))
@@ -279,9 +280,12 @@ function describeCheckViolation(constraint: string): string {
     return 'Rejecting this record requires a reason.';
   if (constraint.includes('one class per year'))
     return 'This student is already assigned to a class in that academic year.';
-  if (constraint.includes('waiver_reason'))
-    return 'A waived fee must state the reason.';
-  if (constraint.includes('dates_valid') || constraint.includes('after_hiring') || constraint.includes('admission_after_birth'))
+  if (constraint.includes('waiver_reason')) return 'A waived fee must state the reason.';
+  if (
+    constraint.includes('dates_valid') ||
+    constraint.includes('after_hiring') ||
+    constraint.includes('admission_after_birth')
+  )
     return 'One of the dates is not valid. Check that the end date is not before the start date.';
   return 'The record failed a validation rule. Please review the values and try again.';
 }
