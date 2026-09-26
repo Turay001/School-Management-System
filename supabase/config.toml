@@ -1,0 +1,97 @@
+# ==========================================================================
+# SAMJONA SMS - Supabase CLI configuration
+# ==========================================================================
+# This file is used only by the Supabase CLI for LOCAL development and for
+# reading the project id when linking to a cloud project. It contains no
+# credentials.
+#
+# For the hosted project, the only things that matter are `project_id` and the
+# migrations in supabase/migrations/.
+#
+# CLI install:  npm install -g supabase
+# Then:         npx supabase login
+#               npx supabase link --project-ref db.qvocnsykkhpvldiebcbe
+#               npx supabase db push
+#
+# NOTE ON THE TRANSACTION POOLER
+# ------------------------------
+# The CLI uses its own direct connection and does not read db.pool.*, so the
+# local settings below do not affect `supabase db push`. The running
+# application connects through port 6543; see .env.example.
+# ==========================================================================
+
+project_id = "db.qvocnsykkhpvldiebcbe"
+
+[api]
+# The application talks to Postgres directly through the `pg` driver and does
+# not use PostgREST, so the REST API is not required. It is enabled here only
+# so that the Supabase dashboard's table editor and SQL editor work.
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+# Local development database port. Only relevant to `supabase start`, which
+# runs a full local stack in Docker. There is no Docker on the reference
+# machine, so the test suite uses PGlite instead; see src/server/db/__tests__/.
+port = 54322
+# Fixed so that the connection string is predictable and never silently
+# regenerated. Change it only if port 54322 is already taken locally.
+major_version = 15
+
+[db.pooler]
+# Transaction mode, port 6543. The application requires this because every unit
+# of work runs inside BEGIN/COMMIT and serverless functions cannot hold
+# long-lived sessions.
+enabled = true
+pool_mode = "transaction"
+default_pool_size = 5
+max_client_conn = 200
+
+[db.migrations]
+# `supabase db push` applies everything in supabase/migrations/ that is not yet
+# recorded in supabase_migrations.schema_migrations.
+#
+# The schema_migrations table is the reason migrations are NOT applied by
+# scripts/db-setup.ts. Two tools writing the same history would desynchronise
+# it, and a migration recorded as applied but never run is far worse than one
+# still marked pending.
+schema_paths = []
+
+[auth]
+# The application does not implement credential handling; Supabase Auth does.
+# These limits are the school's own policy and MUST be confirmed before go-live.
+# See docs/setup.md, CONFIGURATION REQUIRED.
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+# Sessions are short. This is a payroll system holding bank details.
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = false
+
+[auth.email]
+# No self-service signup. Accounts are created by the Proprietor, because an
+# open signup form would let anyone obtain a principal-level role.
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = false
+
+[auth.email.template]
+subject = "Your SAMJONA sign-in code"
+template = "Your sign-in code is {{ .Token }}"
+
+[storage]
+# Not used. Employee documents are intentionally out of scope; storing
+# identity documents in the same project as payroll would widen the blast
+# radius of a breach for no current benefit.
+enabled = false
+
+[analytics]
+enabled = false
+
+[edge_runtime]
+enabled = false
