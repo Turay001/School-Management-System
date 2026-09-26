@@ -28,9 +28,6 @@ export const serverEnv = {
   get DATABASE_POOL_MAX() {
     return process.env.DATABASE_POOL_MAX;
   },
-  get DATABASE_STATEMENT_TIMEOUT_MS() {
-    return process.env.DATABASE_STATEMENT_TIMEOUT_MS;
-  },
 
   /**
    * Connection string for `samjona_service_login`, used ONLY by payroll

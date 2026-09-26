@@ -57,9 +57,12 @@ function build(connectionString: string, applicationName: string): Pool {
     max: Number(process.env.DATABASE_POOL_MAX ?? 5),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
-    // Fail fast rather than queueing forever behind an exhausted pool.
-    statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS ?? 15_000),
     application_name: applicationName,
+    // NO statement_timeout here. Passing it as a client option makes `pg`
+    // send it as a STARTUP parameter, and the transaction pooler on
+    // port 6543 rejects that with "unsupported startup parameter" - the
+    // connection never happens. The timeout is applied per transaction
+    // instead, via `set local statement_timeout` in withTransaction.
   });
 
   // A pool-level error (e.g. an idle server closing the connection) must not
