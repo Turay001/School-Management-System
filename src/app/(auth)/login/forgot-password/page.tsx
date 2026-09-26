@@ -29,7 +29,13 @@ export default function ForgotPasswordPage() {
         redirectTo: `${window.location.origin}/auth/callback?next=/login&type=recovery`,
       });
       if (resetError) {
-        setError('We could not send the reset link right now. Please try again in a moment.');
+        // Supabase throttles the recover endpoint hard (roughly one link per
+        // minute per address); a 429 means "stop clicking, wait, then retry".
+        if (resetError.status === 429) {
+          setError('Too many reset requests. Please wait about a minute, then try again.');
+        } else {
+          setError('We could not send the reset link right now. Please try again in a moment.');
+        }
         setState('error');
         return;
       }
@@ -87,6 +93,11 @@ export default function ForgotPasswordPage() {
       <Button type="submit" className="w-full" disabled={state === 'loading'}>
         {state === 'loading' ? 'Sending…' : 'Send reset link'}
       </Button>
+
+      <p className="text-center text-xs text-muted-foreground">
+        Only one link can be sent per minute. Requesting again too soon is blocked by the email
+        provider.
+      </p>
 
       <p className="text-center text-sm">
         <Link href="/login" className="text-primary underline-offset-4 hover:underline">
