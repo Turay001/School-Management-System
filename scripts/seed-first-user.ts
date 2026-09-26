@@ -126,6 +126,56 @@ function isRole(value: string | undefined): value is Role {
   return value !== undefined && (ROLES as readonly string[]).includes(value);
 }
 
+/**
+ * Confirm the profile resolves through the exact context the application uses
+ * when it signs the user in, and return its `user_code`.
+ *
+ * `withUserContext` (src/server/db/transaction.ts) runs an explicit
+ * transaction and scopes `app.user_id` / `app.user_role` to it, inside a pool
+ * that already connects as `samjona_app`. This mirrors that shape: the same
+ * transaction-scoped GUCs, so `app_user_id()` / `app_user_role()` resolve like
+ * they do for a real request.
+ *
+ * The WHERE clause then evaluates the policy predicates the application's
+ * read path depends on (`id = app_user_id()` plus the role pointer). The
+ * admin connection cannot switch to `samjona_app` - its `postgres` role is
+ * given BYPASSRLS plus membership without the SET grant option on Supabase
+ * cloud, and `set role` there is refused with 42501 - so the predicates are
+ * evaluated over the BYPASSRLS connection rather than by the policies
+ * themselves. Executing them verbatim catches the common failures (missing
+ * row, role mismatch, GUC plumbing), while `npm run db:verify-writes`
+ * (connecting as `samjona_login`) remains the authoritative role-level proof.
+ */
+async function verifyVisibleAsItself(
+  db: Client,
+  authUserId: string,
+  role: Role,
+): Promise<string | null> {
+  await db.query('begin');
+  try {
+    await db.query('select set_config($1, $2, true)', ['app.user_id', authUserId]);
+    await db.query('select set_config($1, $2, true)', ['app.user_role', role]);
+
+    const { rows: visible } = await db.query<{ user_code: string }>(
+      `select user_code
+         from app_users
+        where id = $1
+          and app_user_id() = $1
+          and app_user_role() = $2::app_role`,
+      [authUserId, role],
+    );
+    await db.query('commit');
+    return visible[0]?.user_code ?? null;
+  } catch (err) {
+    try {
+      await db.query('rollback');
+    } catch {
+      // The connection is failing anyway; the original error matters more.
+    }
+    throw err;
+  }
+}
+
 function parseArgs(argv: string[]): {
   authUserId: string;
   username: string;
@@ -222,7 +272,18 @@ async function main(): Promise<void> {
       console.log(`\n  A profile already exists: ${current.user_code}, role ${current.role}.`);
 
       if (current.role === args.role) {
-        console.log('  Nothing to do. Re-running this script changes nothing.\n');
+        // A re-run with an unchanged role is also a health check: this is
+        // the one place with admin access that can confirm the profile
+        // still resolves through the application's context functions.
+        const userCode = await verifyVisibleAsItself(db, args.authUserId, args.role);
+        if (userCode !== current.user_code) {
+          fatal(
+            'The profile exists but is not visible under its own role context, which would ' +
+              'make the account unable to sign in. Run: npm run db:verify-writes',
+          );
+        }
+        console.log(`\n  verified    ${userCode} still resolves to its own row and role.`);
+        console.log('  Nothing to change. Re-running this script changes nothing.\n');
         return;
       }
       // Refuse rather than promote or demote. A role change is a deliberate
@@ -259,25 +320,21 @@ async function main(): Promise<void> {
     console.log(`\n  created     ${created.user_code}  (${args.role})`);
     console.log(`              ${args.username} - ${args.fullName}`);
 
-    // Confirm the row is readable through the RLS context the application
-    // actually uses, and that it is the row just created. Connecting as
-    // `postgres` would prove nothing, because `postgres` bypasses RLS.
-    const { rows: visible } = await db.query<{ user_code: string; role: string }>(
-      `select user_code, role
-         from app_users
-        where id = $1
-          and app_user_role() = $2::app_role`,
-      [args.authUserId, args.role],
-    );
-    if (visible.length !== 1) {
+    // Confirm the row resolves through the RLS context the application actually
+    // uses, and that it is the row just created. The admin connection bypasses
+    // RLS by itself, so the check mirrors withUserContext instead - the same
+    // transaction-scoped GUCs and the policy predicates evaluated verbatim
+    // (see verifyVisibleAsItself).
+    const visible = await verifyVisibleAsItself(db, args.authUserId, args.role);
+    if (visible !== created.user_code) {
       fatal(
-        'The row was created but is not visible under its own role. An RLS policy on ' +
-          'app_users is blocking it, which would make the account unable to sign in. ' +
-          'Run: npm run db:verify-writes',
+        'The row was created but is not visible under its own role context. An RLS ' +
+          'policy on app_users is blocking it, which would make the account unable to ' +
+          'sign in. Run: npm run db:verify-writes',
       );
     }
 
-    console.log(`\n  verified    ${visible[0]!.user_code} is visible to its own role.`);
+    console.log(`\n  verified    ${visible} resolves to its own row and role.`);
     console.log(
       '\n  What this unblocks:\n' +
         '    * signing in at all - the application looks the account up here\n' +
@@ -288,7 +345,8 @@ async function main(): Promise<void> {
         '  The fee-adjustment path needs all four, so it cannot be exercised end to end\n' +
         "  until the school's data is loaded. That is a data-loading step, not a schema one.\n" +
         '\n' +
-        '  Next: sign in through the application. No interface exists yet.\n',
+        '  Next: sign in at /login with the username you just created. Signing in is the\n' +
+        '  only way the session bootstrap can resolve this profile through RLS.\n',
     );
   } finally {
     await db.end();
