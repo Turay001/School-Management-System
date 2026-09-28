@@ -745,8 +745,8 @@ flagged `is_placeholder = true` in the `settings` table.
 - [ ] UI (no interface has been built yet; `npm run build` fails because there
       is no `app/` or `pages/` directory. `npm run verify` omits `build` for
       this reason, deliberately, rather than pretending it passes.)
-- [ ] Documentation (`README.md`, `docs/*.md`)
-- [ ] Backup and restore procedure
+- [x] Documentation (`README.md`, `docs/*.md`)
+- [x] Backup and restore procedure
 - [x] Initialise the repository and convert this log into real commits
 
 ### Not done
@@ -788,3 +788,43 @@ Two role passwords were generated during setup and live only in `.env.setup`:
 `samjona_login` and `samjona_service_login`. They are rotated on every
 `db:setup` run, so the safe procedure is to change the value in `.env.setup` and
 re-run, rather than rotating in the database alone.
+
+## Phase 6 — Documentation
+
+After all seven placeholder modules shipped (Students, Fees, Expenses, Leave,
+Reports, Settings, Notifications — commits `2ab8cee`..`daf5715`), the
+documentation debt named in Phase 5's checklist was paid:
+
+- **`README.md`** — what the system is, module/role tables, the quick start in
+  the now-verified order, and the doc index.
+- **`docs/architecture.md`** — layers, money conventions, status enums, the
+  "no invented business rules" policy, why reports are views, settings/audit
+  behaviour, notifications as live aggregates, and the "Optional Google Sheets
+  integration" note that `.env.example` points at.
+- **`docs/security.md`** — the role model (`samjona_app`/`samjona_service`,
+  `samjona_login`/`samjona_service_login`), the payroll escalation, the
+  append-only audit design, and secret handling. Exists to satisfy the
+  references in `env.ts`, `next.config.ts` and migrations 001/003.
+- **`docs/setup.md`** — the full first-run sequence: env-file split,
+  `db:setup`, `supabase link` + `db:migrate`, first user, sign-in, and a
+  troubleshooting table.
+- **`docs/deployment.md`** — runtime variables, the 6543/5432 pooler
+  reasoning, what a deploy host must NOT hold, `validateConfig`, and a
+  payroll go-live checklist.
+- **`docs/payroll-workflow.md`** — the state machine, per-transition
+  permissions, segregation of duties, immutability, and how to exercise the
+  happy path.
+- **`docs/bank-export.md`** — the awaited bank format: what the placeholder
+  row is, the `bank_export_templates` shape, the column sources the CSV
+  builder supports, and how to load a confirmed format without code changes.
+- **`docs/backup-and-restore.md`** — `pg_dump` logical backups, the
+  fresh-project restore path that actually works, managed backups, cadence,
+  and the "a backup that has never been restored is a guess" rule.
+
+Honesty constraints kept in the docs: the procedures are _written and
+referenced_ but a live restore rehearsal and a real bank-format load have not
+been executed — the docs say so rather than implying they were. The payroll
+happy path is still blocked on live data (no second app user; no staff with
+salary + bank records), which `README.md` and `docs/payroll-workflow.md` state
+plainly. `postgres` password rotation remains unresolved (the "Outstanding
+risk" note above).
