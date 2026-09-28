@@ -189,6 +189,20 @@ describe('navGroupsFor - admin and proprietor affordances', () => {
   });
 });
 
+describe('navGroupsFor - My Profile (Phase 4 self-service front door)', () => {
+  it('offers My Profile to every role: every sign-in is potentially an employee', () => {
+    for (const role of ALL_ROLES) {
+      expect(labelsFor(userFor(role))).toContain('My Profile');
+    }
+  });
+
+  it('labels the /my-profile path under the People section for every role', () => {
+    for (const role of ALL_ROLES) {
+      expect(sectionLabelForPathname(userFor(role), '/my-profile')).toBe('My Profile');
+    }
+  });
+});
+
 describe('navGroupsFor - leave feature flag', () => {
   it('hides the leave module for everyone when the flag is off', () => {
     for (const role of ALL_ROLES) {

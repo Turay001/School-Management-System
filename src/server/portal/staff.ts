@@ -369,41 +369,87 @@ export async function getStaffDetail(user: SessionUser, id: string): Promise<Sta
     throw new ForbiddenError('Your role does not allow viewing staff records.');
   }
 
-  return withUserContext(user, async (tx) => {
-    const employee = await employeeRepository(tx).getById(id);
-    // `null` means either "does not exist" or "RLS hides it from you". Both
-    // answer "not found" as a 404, revealing nothing about records the caller
-    // may not read.
-    if (!employee) throw new NotFoundError('Employee', id);
+  return withUserContext(user, (tx) => loadStaffDetail(tx, id));
+}
 
-    // Sequential, not Promise.all: these share one transaction client, and pg
-    // forbids more than one query in flight at once.
-    const salaries = await salaryRecordRepository(tx).list({
-      filter: { eq: { employee_id: id } },
-      sortBy: 'effective_from',
-      sortDir: 'desc',
-    });
-    const banks = await bankAccountRepository(tx).list({
-      // Only the current, live account belongs on the profile card. Closed
-      // accounts remain in the table and the audit trail for history.
-      filter: { eq: { employee_id: id, account_status: 'active' } },
-      sortBy: 'effective_from',
-      sortDir: 'desc',
-    });
+/**
+ * The transaction-bound reads behind `getStaffDetail`, exported so the
+ * self-service boundary is testable against a real PostgreSQL engine (PGlite)
+ * with the RLS GUC context set (Phase 4): an employee reads their OWN record,
+ * and only their own.
+ *
+ * Row visibility comes solely from the RLS attached to `tx` - never from the
+ * caller: `employees_select` admits the sign-in's own row (plus the staff-read
+ * roles), `employee_salary_history_select` admits own rows ("a staff member may
+ * see their own pay"), and `employee_bank_accounts_select` admits only the
+ * payment roles. So a teacher calling this with another employee's id gets a
+ * 404, and a teacher reading their own record receives their own salary rows
+ * but no bank rows.
+ */
+export async function loadStaffDetail(tx: Queryable, id: string): Promise<StaffDetail> {
+  const employee = await employeeRepository(tx).getById(id);
+  // `null` means either "does not exist" or "RLS hides it from you". Both
+  // answer "not found" as a 404, revealing nothing about records the caller
+  // may not read.
+  if (!employee) throw new NotFoundError('Employee', id);
 
-    return {
-      employee,
-      salaries: salaries.rows,
-      banks: banks.rows.map((bank) => ({
-        id: bank.id,
-        bankName: bank.bankName,
-        accountName: bank.accountName,
-        accountNumber: maskAccountNumber(bank.accountNumber),
-        isPrimary: bank.isPrimary,
-        effectiveFrom: bank.effectiveFrom,
-      })),
-    };
+  // Sequential, not Promise.all: these share one transaction client, and pg
+  // forbids more than one query in flight at once.
+  const salaries = await salaryRecordRepository(tx).list({
+    filter: { eq: { employee_id: id } },
+    sortBy: 'effective_from',
+    sortDir: 'desc',
   });
+  const banks = await bankAccountRepository(tx).list({
+    // Only the current, live account belongs on the profile card. Closed
+    // accounts remain in the table and the audit trail for history.
+    filter: { eq: { employee_id: id, account_status: 'active' } },
+    sortBy: 'effective_from',
+    sortDir: 'desc',
+  });
+
+  return {
+    employee,
+    salaries: salaries.rows,
+    banks: banks.rows.map((bank) => ({
+      id: bank.id,
+      bankName: bank.bankName,
+      accountName: bank.accountName,
+      accountNumber: maskAccountNumber(bank.accountNumber),
+      isPrimary: bank.isPrimary,
+      effectiveFrom: bank.effectiveFrom,
+    })),
+  };
+}
+
+/**
+ * MY PROFILE - the employee's own record (Phase 4).
+ *
+ * The staff id is resolved SERVER-SIDE from `app_users.employee_id` inside the
+ * same transaction - it is never taken from the browser, so there is no
+ * employee id to tamper with and the page can only ever show the caller's own
+ * record. Returns `null` when the account is not linked to a staff record,
+ * which the profile page renders as an intentional state instead of an error.
+ */
+export async function getMyProfile(user: SessionUser): Promise<StaffDetail | null> {
+  if (!canAny(user, ['employees:read', 'employees:read_own'])) {
+    throw new ForbiddenError('Your role does not allow viewing staff records.');
+  }
+
+  return withUserContext(user, async (tx) => {
+    const linked = await findOwnEmployeeId(tx, user.id);
+    if (!linked) return null;
+    return loadStaffDetail(tx, linked);
+  });
+}
+
+/** The employee record attached to a sign-in, or null when none is linked. */
+export async function findOwnEmployeeId(tx: Queryable, userId: string): Promise<string | null> {
+  const { rows } = await tx.query<{ employee_id: string }>(
+    `select employee_id from app_users where id = $1 limit 1`,
+    [userId],
+  );
+  return rows[0]?.employee_id ?? null;
 }
 
 // ---------------------------------------------------------------------------

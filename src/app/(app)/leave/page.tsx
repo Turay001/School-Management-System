@@ -3,11 +3,12 @@ import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
 import { getSessionUser } from '@/server/auth/bootstrap';
-import { listLeaveRequests } from '@/server/portal/leave';
+import { getMyLeaveSummary, listLeaveRequests } from '@/server/portal/leave';
 import { formatDate } from '@/lib/format';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { IconEye, IconPlus } from '@/components/icons';
 import { LeaveStatusBadge } from '@/components/leave/status-badge';
@@ -19,6 +20,13 @@ import { LeaveToolbar } from './leave-toolbar';
  * Staff time off. A teacher sees their own requests (RLS), approvers see
  * everyone's. Approval does not touch payroll - that depends on school
  * policy the school has not confirmed yet.
+ *
+ * For an employee-scoped viewer (no `leave:approve`) a "My leave" strip at
+ * the top summarises their OWN requests - pending, approved, rejected and
+ * cancelled - so this page doubles as the employee's self-service leave
+ * experience without a parallel page (Phase 4). The counts come from
+ * `getMyLeaveSummary`, which filters on the sign-in's own employee id inside
+ * the service layer, so nothing about other staff is ever counted here.
  */
 export default async function LeavePage({
   searchParams,
@@ -41,7 +49,10 @@ export default async function LeavePage({
   const status = sp.status ?? '';
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
-  const result = await listLeaveRequests(user, { status, page, pageSize: 15 });
+  const [result, mySummary] = await Promise.all([
+    listLeaveRequests(user, { status, page, pageSize: 15 }),
+    can(user, 'leave:approve') ? Promise.resolve(null) : getMyLeaveSummary(user),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -62,6 +73,20 @@ export default async function LeavePage({
           </Button>
         ) : null}
       </div>
+
+      {mySummary ? (
+        <div className="rounded-lg border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
+            <p className="text-sm font-medium">My leave</p>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <SummaryStat label="Pending" value={mySummary.pending} variant="warning" />
+              <SummaryStat label="Approved" value={mySummary.approved} variant="success" />
+              <SummaryStat label="Rejected" value={mySummary.rejected} variant="destructive" />
+              <SummaryStat label="Cancelled" value={mySummary.cancelled} variant="secondary" />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <LeaveToolbar
         initialStatus={status}
@@ -137,5 +162,22 @@ export default async function LeavePage({
         </div>
       )}
     </div>
+  );
+}
+
+function SummaryStat({
+  label,
+  value,
+  variant,
+}: {
+  label: string;
+  value: number;
+  variant: 'success' | 'secondary' | 'warning' | 'destructive';
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <Badge variant={variant}>{value}</Badge>
+      <span className="text-muted-foreground">{label}</span>
+    </span>
   );
 }

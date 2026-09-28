@@ -14,6 +14,7 @@ import {
   IconSettings,
   IconStudent,
   IconSubjects,
+  IconUser,
   IconUsers,
 } from '@/components/icons';
 import { can, canAny, type Permission, type SessionUser } from '@/server/auth/permissions';
@@ -68,6 +69,15 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'People',
     items: [
+      {
+        href: '/my-profile',
+        label: 'My Profile',
+        // Every signed-in role is (potentially) an employee. The route resolves
+        // the linked record server-side from the sign-in - no id in the URL to
+        // tamper with - and explains honestly when no record is linked.
+        access: ['employees:read', 'employees:read_own'],
+        icon: IconUser,
+      },
       {
         href: '/staff',
         label: 'Staff',

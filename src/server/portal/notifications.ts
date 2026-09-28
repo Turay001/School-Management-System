@@ -2,6 +2,8 @@ import 'server-only';
 
 import { canAny, type SessionUser } from '../auth/permissions';
 import { withUserContext } from '../db/transaction';
+import { getTeacherDashboardData } from './dashboard';
+import { getMyLeaveSummary } from './leave';
 
 /**
  * NOTIFICATIONS MODULE - service layer
@@ -142,4 +144,45 @@ export async function getPendingSettingsCount(user: SessionUser): Promise<number
     );
     return rows[0]?.c ?? 0;
   });
+}
+
+export interface MyAttention {
+  /** Assessments in the teacher's OWN classes that still await marks. 0 when not a teacher. */
+  pendingMarks: number;
+  /** The signer's OWN leave requests still awaiting a decision. 0 when not linked or no leave access. */
+  myPendingLeave: number;
+}
+
+/**
+ * MY NOTIFICATIONS (Phase 4)
+ * ==========================
+ * The personal attention items every staff-linked account can act on, drawn
+ * from LIVE, RLS-scoped state - no notification table, no per-recipient rows,
+ * exactly like the rest of this surface. Each item is gated by the same
+ * permission as its source module and scoped to the sign-in:
+ *   - pending marks come from `getTeacherDashboardData`, which only returns
+ *     anything while `classes.teacher_id` is the sign-in's employee record;
+ *   - the leave count comes from `getMyLeaveSummary`, an explicit
+ *     `employee_id`-filtered query on the sign-in's OWN requests.
+ * A call therefore can never surface another user's work or data.
+ */
+export async function getMyAttention(user: SessionUser): Promise<MyAttention> {
+  const [pendingMarks, myPendingLeave] = await Promise.all([
+    user.role === 'teacher' ? countPendingMarks(user) : Promise.resolve(0),
+    canAny(user, ['leave:read_own', 'leave:request'])
+      ? countMyPendingLeave(user)
+      : Promise.resolve(0),
+  ]);
+  return { pendingMarks, myPendingLeave };
+}
+
+async function countPendingMarks(user: SessionUser): Promise<number> {
+  const data = await getTeacherDashboardData(user);
+  if (!data) return 0;
+  return data.classes.reduce((sum, cls) => sum + cls.pendingMarks, 0);
+}
+
+async function countMyPendingLeave(user: SessionUser): Promise<number> {
+  const summary = await getMyLeaveSummary(user);
+  return summary?.pending ?? 0;
 }

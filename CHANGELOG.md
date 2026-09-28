@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          381 passed / 381, 22 files
+npm run test          405 passed / 405, 23 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green (typecheck + lint + test + build)
 ```
@@ -42,8 +42,8 @@ npm run verify        green (typecheck + lint + test + build)
 | `lib/money.test.ts`                                    | 10    |
 | `lib/format.test.ts`                                   | 7     |
 | `repositories/postgres/__tests__/queryBuilder.test.ts` | 42    |
-| `auth/permissions.test.ts`                             | 20    |
-| `components/layout/__tests__/navigation.test.ts`       | 16    |
+| `auth/permissions.test.ts`                             | 24    |
+| `components/layout/__tests__/navigation.test.ts`       | 18    |
 | `db/__tests__/consistency.test.ts`                     | 16    |
 | `db/__tests__/roles.test.ts`                           | 14    |
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
@@ -57,6 +57,7 @@ npm run verify        green (typecheck + lint + test + build)
 | `db/__tests__/service-context.test.ts`                 | 7     |
 | `db/__tests__/payroll-workflow.test.ts`                | 5     |
 | `db/__tests__/student-detail-rls.test.ts`              | 12    |
+| `db/__tests__/self-service-rls.test.ts`                | 18    |
 
 One check sits outside `npm run verify`, recorded here so the exclusion is
 deliberate rather than silent: `npm run format:check`, which as of Phase 7
@@ -1459,3 +1460,144 @@ npm run lint        exit 0
 npm run test        381 passed / 381, 22 files (student-detail-rls = 12)
 npm run build       exit 0, /my-classes and /my-subjects compile
 ```
+
+---
+
+## Phase 12 — Staff self-service: My Profile, My Notifications, My Leave ("Phase 4", GATE 2 approved)
+
+Approved as "Phase 4" of the role-aware roadmap. Four asks, delivered under the
+same discipline as Phase 11 (audit → implement → test → fix → verify): My
+Profile, My Notifications, My Leave - and a **documented deferral** for the
+payslip and the personal task list, because neither has a safe existing
+boundary and the phase forbids inventing the missing model.
+
+### My Profile (`/my-profile`)
+
+- New page **`src/app/(app)/my-profile/page.tsx`**. The staff record is resolved
+  **server-side from `app_users.employee_id`** inside the service transaction
+  (`getMyProfile` → `findOwnEmployeeId` → `loadStaffDetail`). There is **no id
+  in the URL to tamper with** - the page can only ever render the caller's own
+  record, and an account with no linked employee record gets an honest EmptyState
+  ("Your account is not linked to a staff record") instead of an error.
+- The page shows identity (name, employee code, role/position, department,
+  contact details), employment facts - and then follows **the RLS boundaries**
+  instead of asserting anything: the **salary card** renders when the signer's
+  own pay is visible to them (the `employee_salary_history` select policy admits
+  own rows by design), and the **bank card** renders only for the payment roles
+  (`employees:bank`) who may read bank details at all. A teacher with no salary
+  row sees no salary card rather than a "no salary yet" assertion, and never a
+  bank card.
+- `getStaffDetail` was refactored to delegate to an exported seam
+  `loadStaffDetail(tx, id)` (same pattern as `loadStudentDetail` in Phase 11), so
+  the boundary is testable directly.
+- Nav: **My Profile** is the first item in the People group, gated on
+  `employees:read`/`employees:read_own` - every role, because every sign-in is
+  potentially an employee; the page handles the not-linked case.
+
+### My Notifications
+
+- The notifications surface is a **derived attention feed, not a per-recipient
+  inbox** - there is no notification table, no recipient targeting, no
+  read/unread state to respect or invent. Phase 4 therefore adds the **personal
+  items staff-linked users were missing**: a teacher previously landed on a
+  permanent "all clear" with no way to see their own pending work.
+- New `getMyAttention(user)` in the notifications service feeds two new items,
+  built first in the page and gated by the same permissions as their sources:
+  - **"Assessments awaiting marks"** - via the existing `getTeacherDashboardData`,
+    which only returns rows while `classes.teacher_id` is the sign-in's own
+    employee record (teacher scope, zero new SQL);
+  - **"Your leave request"** - via the new `getMyLeaveSummary`, an explicit
+    `employee_id`-filtered count of the sign-in's OWN requests.
+- Everything else is unchanged: a teacher still sees no queue items
+  (expenses/leave approval counts are permission-null for them), and no
+  per-user notification architecture was introduced.
+
+### My Leave
+
+- The `/leave` route already *is* the employee's own leave experience (RLS
+  scopes it to own rows for non-approver roles; the detail page already shows
+  dates, duration and reason). Phase 4 adds a **"My leave" summary strip** for
+  employee-scoped viewers (anyone without `leave:approve`) counting their own
+  pending/approved/rejected/cancelled requests - powered by the new
+  `getMyLeaveSummary`, whose `employee_id` filter is defence in depth over the
+  RLS scoping.
+- `getLeaveRequest` now delegates to an exported seam `loadLeaveRequest(tx, id)`
+  so the cross-user denial is directly testable.
+
+### Payslip and personal tasks: deferred by decision (not by accident)
+
+- **Payslip (§4 of the gate).** There is deliberately **no employee-scoped
+  boundary** in the payroll model today: `payroll_items_select` admits only
+  proprietor/bursar/principal, and no `payroll:read_own`-style permission exists.
+  The phase explicitly forbids weakening the payroll security model to build a
+  page, so the payslip is **deferred** and the report states what a future
+  boundary would need (an own-row SELECT policy on `payroll_items`/`payroll_runs`
+  keyed to `employee_id = app_current_employee_id()`, plus a matching
+  permission). The audit noted the existing own-pay visible boundary
+  (`employee_salary_history` own-row policy) is used by the salary card instead.
+- **Personal tasks (§5 of the gate).** There is no task/assignment table in the
+  schema; the only workflows are leave and expense approvals, which ride the
+  permission matrix already. No task system was invented.
+- Tests prove the deferrals are airtight: a real payroll run + item exists for
+  the employee's own id, yet the employee (and admin) read **zero** payroll
+  rows, the payroll roles still read them, and a `pg_policy` assertion documents
+  that `payroll_items` has no `app_current_employee_id` self-read policy.
+
+### Regression tests added
+
+`db/__tests__/self-service-rls.test.ts` (18 tests) - direct service seams + RLS
+GUC context against PGlite, same method as Phase 11:
+
+- **My Profile negatives:** employee A reading employee B's record → 404; raw
+  SQL shows B's row to A as 0 rows; an unlinked account sees no employee rows
+  at all; B's salary rows invisible to A; bank accounts invisible to teacher,
+  principal and admin.
+- **My Profile positives:** A reads A's own identity and own salary; bursar and
+  proprietor read A's masked bank details; principal/admin read A (salary only).
+- **My Leave:** A reads A's own leave request via the seam; A on B's request →
+  404; RLS list scoped to own rows.
+- **My Notifications:** pending-marks count covers the teacher's own classes
+  only (B's assessment → 0 rows); own pending-leave counts can never include
+  another employee's request.
+- **Payslip boundary:** employee/admin read 0 payroll rows despite a real line
+  for their own id; bursar/principal still read them; the policy has no
+  self-read clause.
+- `auth/permissions.test.ts` (+4): every role holds `employees:read`/`read_own`
+  (self-service reach), teacher is `read_own` only, teacher has no
+  expense/leave approval permissions (so no queue items can ever appear), and
+  `payroll:read` stays on the payroll roles.
+- `navigation.test.ts` (+2): My Profile offered to every role; `/my-profile`
+  resolves to the People section for every role.
+
+### Files created
+
+- `src/app/(app)/my-profile/page.tsx`
+- `src/server/db/__tests__/self-service-rls.test.ts` (18 tests)
+
+### Files modified
+
+- `src/server/portal/staff.ts` - `loadStaffDetail` seam, `getMyProfile`,
+  `findOwnEmployeeId` (server-side identity resolution)
+- `src/server/portal/leave.ts` - `loadLeaveRequest` seam, `getMyLeaveSummary`
+- `src/server/portal/notifications.ts` - `getMyAttention` (personal items)
+- `src/app/(app)/notifications/page.tsx` - personal items build first
+- `src/app/(app)/leave/page.tsx` - "My leave" summary strip for non-approvers
+- `src/components/layout/navigation.tsx` - My Profile in the People group
+- `src/server/auth/permissions.test.ts`, `src/components/layout/__tests__/navigation.test.ts`
+- `CHANGELOG.md` (this section), `docs/architecture.md` (self-service + payslip
+  boundary note)
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        405 passed / 405, 23 files (self-service-rls = 18)
+npm run build       exit 0, /my-profile compiles
+```
+
+**No new permissions, no new tables, no new migrations.** Every deliverable
+reuses existing permissions (`employees:read_own`, `leave:read_own`,
+`results:record` via the teacher scope) and existing RLS as the final
+enforcement. GATE 2 discipline continues to hold: nothing in this phase expands
+the authorization matrix.

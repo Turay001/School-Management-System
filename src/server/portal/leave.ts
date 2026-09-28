@@ -142,24 +142,75 @@ export async function getLeaveRequest(user: SessionUser, id: string): Promise<Le
     throw new ForbiddenError('Your role does not allow viewing leave requests.');
   }
 
+  return withUserContext(user, (tx) => loadLeaveRequest(tx, id));
+}
+
+/**
+ * The transaction-bound read behind `getLeaveRequest`, exported so the leave
+ * self-service boundary is testable against PGlite with the RLS GUC context
+ * (Phase 4): an employee reads their OWN requests; another employee's request
+ * is not found - exactly what an API caller experiences. Row visibility comes
+ * from the RLS attached to `tx` (`leave_requests_select` admits own rows plus
+ * the managing roles), never from the caller.
+ */
+export async function loadLeaveRequest(tx: Queryable, id: string): Promise<LeaveRequestRow> {
+  const { rows } = await tx.query<LeaveDbRow>(
+    `select r.id, r.employee_id, e.full_name as employee_name, r.leave_type,
+            r.start_date, r.end_date, r.days_count, r.reason, r.status,
+            r.created_at as requested_at,
+            (select u.id from app_users u where u.employee_id = r.employee_id limit 1)
+              as requester_user_id,
+            r.approved_by, au.full_name as decided_by_name, r.approved_at as decided_at,
+            r.decision_note
+       from leave_requests r
+       join employees e on e.id = r.employee_id
+       left join app_users au on au.id = r.approved_by
+      where r.id = $1
+      limit 1`,
+    [id],
+  );
+  if (!rows[0]) throw new NotFoundError('Leave request', id);
+  return mapLeaveRow(rows[0]);
+}
+
+export interface MyLeaveSummary {
+  pending: number;
+  approved: number;
+  rejected: number;
+  cancelled: number;
+  total: number;
+}
+
+/**
+ * MY LEAVE SUMMARY (Phase 4)
+ * ==========================
+ * The signed-in employee's OWN leave counts. The employee id is resolved
+ * server-side from `app_users.employee_id` inside the transaction, and the
+ * explicit `employee_id = $1` filter is defence in depth layered over the RLS
+ * scoping - calling this can never surface another employee's requests,
+ * whatever role the caller holds. Returns null when the account has no linked
+ * staff record or the caller has no leave module access.
+ */
+export async function getMyLeaveSummary(user: SessionUser): Promise<MyLeaveSummary | null> {
+  if (!canAny(user, ['leave:read_own', 'leave:request'])) return null;
   return withUserContext(user, async (tx) => {
-    const { rows } = await tx.query<LeaveDbRow>(
-      `select r.id, r.employee_id, e.full_name as employee_name, r.leave_type,
-              r.start_date, r.end_date, r.days_count, r.reason, r.status,
-              r.created_at as requested_at,
-              (select u.id from app_users u where u.employee_id = r.employee_id limit 1)
-                as requester_user_id,
-              r.approved_by, au.full_name as decided_by_name, r.approved_at as decided_at,
-              r.decision_note
-         from leave_requests r
-         join employees e on e.id = r.employee_id
-         left join app_users au on au.id = r.approved_by
-        where r.id = $1
-        limit 1`,
-      [id],
+    const requester = await findRequesterEmployee(tx, user.id);
+    if (!requester) return null;
+
+    const { rows } = await tx.query<{ status: string; c: number }>(
+      `select status, count(*)::int as c
+         from leave_requests
+        where employee_id = $1
+        group by status`,
+      [requester.employeeId],
     );
-    if (!rows[0]) throw new NotFoundError('Leave request', id);
-    return mapLeaveRow(rows[0]);
+    const summary: MyLeaveSummary = { pending: 0, approved: 0, rejected: 0, cancelled: 0, total: 0 };
+    for (const row of rows) {
+      const key = row.status as keyof MyLeaveSummary;
+      if (key in summary) summary[key] = row.c;
+      summary.total += row.c;
+    }
+    return summary;
   });
 }
 

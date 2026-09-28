@@ -228,6 +228,42 @@ bank details, staff missing salary/bank records, unconfirmed settings — and
 each aggregate is gated by its source module's permission. Nothing is
 invented; the list is whatever the real ledger says needs attention.
 
+Since the role-aware phases, the feed also carries **personal items** for
+staff-linked accounts (Phase 4): assessments awaiting marks in the teacher's
+own classes and the signer's own pending leave requests. These come first in
+the list and are scoped exactly like everything else — the marks count uses
+`classes.teacher_id = the signer's employee record`, the leave count filters
+on the signer's own `employee_id` — so a call can never surface another
+user's work or data. There is still no per-recipient targeting and no
+read/unread state; those do not exist in the model and were deliberately not
+invented.
+
+## Employee self-service
+
+Employees read **their own records only**, and the boundary is structural, not
+a UI choice:
+
+- **My Profile** resolves the staff record server-side from
+  `app_users.employee_id` inside the service transaction — there is no id in
+  the URL to tamper with. The page can only render the caller's own record;
+  an account with no linked employee record gets an honest empty state. Row
+  visibility follows RLS: identity and employment facts are the signer's own,
+  salary history is visible because the select policy on
+  `employee_salary_history` explicitly admits own rows ("a staff member may
+  see their own pay"), and bank details render only for the payment roles
+  (`employees:bank`).
+- **My Leave** is the existing `/leave` route: it is already scoped to own
+  rows by `leave_requests_select` for non-approver roles, and a "My leave"
+  summary strip (counts by status) is computed from an explicit
+  `employee_id`-filtered query on the signer's own requests.
+- There is deliberately **no employee-scoped payslip** and **no personal task
+  list.** The payroll snapshot tables (`payroll_runs`, `payroll_items`) are
+  readable only by the payroll roles — no own-row policy exists, and the phase
+  forbade weakening that model to build the page. A future "My Payslip" would
+  need a first-class boundary: an own-row SELECT policy on the payroll
+  snapshot keyed to `employee_id = app_current_employee_id()` plus a matching
+  permission, reviewed like any other expansion of the authorization matrix.
+
 ## Optional Google Sheets integration
 
 Google Sheets is **not** the database and has no role in the data path. It was

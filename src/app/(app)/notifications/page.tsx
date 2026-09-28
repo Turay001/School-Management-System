@@ -5,6 +5,7 @@ import { canAny } from '@/server/auth/permissions';
 import { getSessionUser } from '@/server/auth/bootstrap';
 import {
   getFeeArrears,
+  getMyAttention,
   getNotificationCounts,
   getPayrollAttention,
   getPendingSettingsCount,
@@ -47,7 +48,8 @@ export default async function NotificationsPage() {
     );
   }
 
-  const [pending, arrears, payroll, staffGaps, pendingSettings] = await Promise.all([
+  const [personal, pending, arrears, payroll, staffGaps, pendingSettings] = await Promise.all([
+    getMyAttention(user),
     getNotificationCounts(user),
     getFeeArrears(user),
     getPayrollAttention(user),
@@ -55,7 +57,7 @@ export default async function NotificationsPage() {
     getPendingSettingsCount(user),
   ]);
 
-  const items = buildItems({ pending, arrears, payroll, staffGaps, pendingSettings });
+  const items = buildItems({ personal, pending, arrears, payroll, staffGaps, pendingSettings });
 
   return (
     <div className="space-y-6">
@@ -122,6 +124,7 @@ export default async function NotificationsPage() {
 // ---------------------------------------------------------------------------
 
 interface BuildInput {
+  personal: Awaited<ReturnType<typeof getMyAttention>>;
   pending: Awaited<ReturnType<typeof getNotificationCounts>>;
   arrears: Awaited<ReturnType<typeof getFeeArrears>>;
   payroll: Awaited<ReturnType<typeof getPayrollAttention>>;
@@ -131,7 +134,36 @@ interface BuildInput {
 
 function buildItems(input: BuildInput): AttentionItem[] {
   const items: AttentionItem[] = [];
-  const { pending, arrears, payroll, staffGaps, pendingSettings } = input;
+  const { personal, pending, arrears, payroll, staffGaps, pendingSettings } = input;
+
+  // The signer's own items come first: they are the work only this account can
+  // see and act on (Phase 4 - see getMyAttention).
+  if (personal.pendingMarks > 0) {
+    items.push({
+      id: 'marks-pending',
+      icon: 'info',
+      isAction: true,
+      title: 'Assessments awaiting marks',
+      detail: `${personal.pendingMarks} ${
+        personal.pendingMarks === 1 ? 'assessment still needs' : 'assessments still need'
+      } marks entered in your classes.`,
+      href: '/results',
+    });
+  }
+
+  if (personal.myPendingLeave > 0) {
+    items.push({
+      id: 'my-leave-pending',
+      icon: 'info',
+      isAction: false,
+      title: 'Your leave request',
+      detail:
+        personal.myPendingLeave === 1
+          ? 'One of your leave requests is still awaiting a decision.'
+          : `${personal.myPendingLeave} of your leave requests are still awaiting a decision.`,
+      href: '/leave',
+    });
+  }
 
   if (pending.expenseApprovals && pending.expenseApprovals > 0) {
     items.push({

@@ -138,6 +138,48 @@ describe('separation of duties', () => {
   });
 });
 
+describe('employee self-service boundaries (Phase 4)', () => {
+  it('lets every role reach its own profile: employees:read or employees:read_own', () => {
+    // My Profile (and the /my-profile route) is the self-service front door.
+    // Every role is potentially an employee, so every role must hold at least
+    // one of the two staff-read permissions; the page itself explains when no
+    // record is linked.
+    for (const role of ROLES) {
+      expect(
+        roleHasPermission(role, 'employees:read') || roleHasPermission(role, 'employees:read_own'),
+        `${role} must be able to read its own staff record`,
+      ).toBe(true);
+    }
+  });
+
+  it('keeps the teacher self-scoped: employees:read_own only, never full staff read', () => {
+    // A teacher's own record is the ONLY staff record they can read. The
+    // service boundary (loadStaffDetail) returns 404 for any other id, and
+    // employees_select admits own rows only - this permission split mirrors it.
+    expect(roleHasPermission('teacher', 'employees:read_own')).toBe(true);
+    expect(roleHasPermission('teacher', 'employees:read')).toBe(false);
+  });
+
+  it('gives a teacher no approval-queue permissions, so their attention feed has no queue items', () => {
+    // getNotificationCounts returns null (item ABSENT) per permission for
+    // expenses:approve / leave:approve. A teacher holds neither, so the only
+    // items the Notifications page can ever build for them are the personal
+    // getMyAttention items - never a misleading empty "0" queue badge.
+    expect(roleHasPermission('teacher', 'expenses:approve')).toBe(false);
+    expect(roleHasPermission('teacher', 'leave:approve')).toBe(false);
+  });
+
+  it('keeps payroll reads on the payroll roles only (the payslip stays deferred)', () => {
+    // Phase 4 does NOT add a payslip page because no employee-scoped boundary
+    // exists (no payroll:read_own permission, no own-row policy on
+    // payroll_items). The matrix must keep it that way: the only readers are
+    // exactly the roles the payroll module already admits.
+    for (const role of ROLES.filter((r) => r !== 'proprietor' && r !== 'bursar' && r !== 'principal')) {
+      expect(roleHasPermission(role, 'payroll:read'), `${role} must not hold payroll:read`).toBe(false);
+    }
+  });
+});
+
 describe('guards throw rather than returning a boolean', () => {
   it('throws when an anonymous user requests a permission', () => {
     expect(() => assertPermission(null, 'employees:read')).toThrow(ForbiddenError);
