@@ -16,7 +16,8 @@ though it were.
 | File | What it is | Origin | Status |
 | --- | --- | --- | --- |
 | `public/branding/og-card.svg` | Open Graph preview card, 1200×630 | Drawn here as SVG from the brand tokens | Placeholder — see "Before sharing the link" |
-| `src/app/icon.svg` | Favicon | Drawn here from the brand tokens | Final unless the school supplies a logo |
+| `src/app/favicon.ico` | Favicon at `/favicon.ico`, 16/32/48 px | **Generated from `src/app/icon.svg`** — never drawn separately | Final unless the school supplies a logo |
+| `src/app/icon.svg` | Favicon at `/icon.svg`, vector | Drawn here from the brand tokens | Final unless the school supplies a logo |
 | Hero frame (`components/marketing/hero.tsx`) | A labelled empty frame | CSS gradient, no asset | **Awaiting the school's own photograph** |
 | Section weave (`marketing.module.css`) | Faint diagonal texture | CSS gradient, no asset | Final |
 
@@ -72,6 +73,47 @@ school's decision to make and document, not this repository's.
 4. Update the `#10454f` value in `src/app/icon.svg` and `og-card.svg` to match,
    or the favicon and the page will drift apart. Those two files cannot read a
    CSS variable, so they carry literal values by necessity.
+5. **Regenerate `src/app/favicon.ico` from `src/app/icon.svg`.** The `.ico` is
+   derived, not authored, so it must never be hand-edited. Both files are
+   served side by side — see the next section.
+
+## Why there are two favicon files
+
+Browsers and search engines ask for two different URLs, and neither substitutes
+for the other:
+
+- **`/favicon.ico`** — requested by browsers that use the historical
+  convention, with no `<link>` tag involved. Next.js serves the file
+  `src/app/favicon.ico` at this path and advertises it as
+  `<link rel="icon" type="image/x-icon" sizes="16x16">`.
+- **`/icon.svg`** — the modern vector icon, advertised as
+  `<link rel="icon" type="image/svg+xml" sizes="any">`. Sharp at any size and
+  recoloured by the browser in dark mode.
+
+Both are emitted, so neither browser behaviour is left to chance. Before
+`favicon.ico` existed, a request for it matched the application's `[...slug]`
+catch-all and was answered with a **307 redirect to `/login`** — the login page,
+as HTML, in response to a request for an image. That is the defect the `.ico`
+fixes.
+
+The `.ico` must be regenerated whenever `icon.svg` changes, or the two drift
+apart and the tab icon changes appearance depending on the browser.
+
+### Regenerating the .ico
+
+It is rasterised from `icon.svg` at 16, 32 and 48 px, packed with PNG payloads
+(PNG-compressed `.ico` entries are understood by every browser that requests
+`/favicon.ico`, and they keep the antialiased edges and transparent rounded
+corners that a 1-bit icon would flatten). `sharp` cannot write `.ico` files
+itself, so the container is assembled by hand.
+
+A single caution for anyone editing these SVGs: **a double hyphen may not appear
+inside an XML comment.** Referencing a CSS custom property by its own name
+introduces one, which makes the document ill-formed. An SVG that does not parse
+renders as *nothing* — there is no fallback — so the file looks fine in an
+editor and produces an invisible favicon in the browser. `og-card.svg` and
+`icon.svg` both contained this defect; it is fixed in `icon.svg`, and
+`og-card.svg` still needs the same treatment.
 
 ## Before sharing the link outside the school
 

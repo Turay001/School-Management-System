@@ -2,9 +2,15 @@
   <!--
     Favicon. The same monogram and the same slate-teal as the application
     wordmark, drawn here as an asset because a favicon cannot use a React
-    component. Values are copied from --primary in src/app/globals.css
-    (hsl 187 62% 24%) rather than approximated; change both together.
-    See public/branding/SOURCES.md.
+    component. Values are copied from the primary token in
+    src/app/globals.css (hsl 187 62% 24%) rather than approximated; change
+    both together. See public/branding/SOURCES.md.
+
+    NOTE ON THIS COMMENT: a double hyphen may not appear inside an XML
+    comment. Naming the CSS custom property directly wrote its two-hyphen
+    form here, which is a well-formedness error, and an SVG document that does
+    not parse renders as nothing at all rather than falling back. The token is
+    therefore referred to by name in prose. See public/branding/SOURCES.md.
   -->
   <rect width="64" height="64" rx="14" fill="#10454f" />
   <text
