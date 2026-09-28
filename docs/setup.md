@@ -91,10 +91,11 @@ npx supabase link --project-ref <your-ref>
 npm run db:migrate
 ```
 
-`npm run db:migrate` is `supabase db push`. The 17 migrations build the whole
+`npm run db:migrate` is `supabase db push`. The 18 migrations build the whole
 schema: enums and identity, users, employees, students, fees, payroll,
 expenses, leave, audit + settings, triggers, reporting views, RLS, reference
-data, hardening. They are idempotent in the sense that `db push` tracks the
+data, hardening, money-view aggregates. They are idempotent in the sense that
+`db push` tracks the
 history; do not hand-edit applied migrations.
 
 To inspect the database with the Supabase Studio-like dashboard:

@@ -274,7 +274,10 @@ describe('views must not bypass RLS', () => {
     )) as Array<{ student_id: string; balance: number | string }>;
 
     expect(bursarRows.map((r) => r.student_id)).toEqual([STUDENT]);
-    expect(Number(bursarRows[0]!.balance)).toBe(100000);
+    // Strict number, not a numeric string: sum() in the view is bigint-cast
+    // (migration 018) so the driver hands back a JS number. A string here
+    // would crash formatMoney on the fees page.
+    expect(bursarRows[0]!.balance).toBe(100000);
 
     const teacherRows = await selectAsApp(
       'select student_id, balance from v_student_fee_balances',
@@ -283,5 +286,41 @@ describe('views must not bypass RLS', () => {
     );
 
     expect(teacherRows).toEqual([]);
+  });
+
+  it('returns every money aggregate as a JS number, not a numeric string', async () => {
+    // `sum(bigint)` returns `numeric` in PostgreSQL, and node-postgres has no
+    // parser for numeric - it arrives as a string. src/lib/money.ts refuses
+    // to render non-numbers, so each amount-bearing aggregate in the views is
+    // cast to bigint (migration 018). These assertions pin that contract for
+    // every view the app actually renders money from.
+    const balance = (await selectAsApp(
+      'select balance from v_student_fee_balances',
+      'bursar',
+      BURSAR,
+    )) as Array<{ balance: unknown }>;
+    expect(typeof balance[0]!.balance, 'v_student_fee_balances.balance').toBe('number');
+
+    const classOutstanding = (await selectAsApp(
+      'select total_outstanding from v_class_fee_outstanding',
+      'bursar',
+      BURSAR,
+    )) as Array<{ total_outstanding: unknown }>;
+    expect(
+      typeof classOutstanding[0]!.total_outstanding,
+      'v_class_fee_outstanding.total_outstanding',
+    ).toBe('number');
+
+    // The monthly financial view generates a row per month even with no data,
+    // so a present-but-wrong type cannot hide behind an empty result set.
+    const financial = (await selectAsApp(
+      'select payroll_total, fees_collected, total_expenses, net_position from v_monthly_financial_summary',
+      'proprietor',
+      PROPRIETOR,
+    )) as Array<Record<string, unknown>>;
+    expect(financial.length).toBeGreaterThan(0);
+    for (const key of ['payroll_total', 'fees_collected', 'total_expenses', 'net_position']) {
+      expect(typeof financial[0]![key], `v_monthly_financial_summary.${key}`).toBe('number');
+    }
   });
 });

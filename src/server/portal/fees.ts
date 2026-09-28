@@ -167,8 +167,10 @@ export async function getFeeOverview(
     }>(
       `select count(*)::int as students_count,
               count(*) filter (where b.is_in_arrears)::int as students_in_arrears,
-              coalesce(sum(b.balance) filter (where b.balance > 0), 0) as total_outstanding,
-              coalesce(sum(b.total_paid), 0) as total_collected
+              -- sum() yields numeric, which node-postgres returns as a string;
+              -- cast to bigint so these stay JS numbers for formatMoney.
+              coalesce(sum(b.balance) filter (where b.balance > 0), 0)::bigint as total_outstanding,
+              coalesce(sum(b.total_paid), 0)::bigint as total_collected
          from v_student_fee_balances b
         where b.term_id = $1`,
       [term.id],

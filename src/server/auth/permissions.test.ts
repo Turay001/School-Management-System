@@ -71,6 +71,7 @@ describe('separation of duties', () => {
       'expenses:read',
       'audit:read',
       'users:manage',
+      'employees:bank',
     ] as const) {
       expect(roleHasPermission('teacher', permission), `teacher must not have ${permission}`).toBe(
         false,
@@ -87,6 +88,21 @@ describe('separation of duties', () => {
     expect(roleHasPermission('proprietor', 'users:manage')).toBe(true);
     for (const role of ROLES.filter((r) => r !== 'proprietor')) {
       expect(roleHasPermission(role, 'users:manage')).toBe(false);
+    }
+  });
+
+  it('lets only the Proprietor and Bursar touch bank details', () => {
+    // Bank accounts are the most sensitive staff data. The RLS policies on
+    // employee_bank_accounts grant INSERT/UPDATE to exactly these two roles,
+    // so the code permission must mirror them or a permitted UI would hit a
+    // policy denial (or worse, the button would mislead).
+    expect(roleHasPermission('proprietor', 'employees:bank')).toBe(true);
+    expect(roleHasPermission('bursar', 'employees:bank')).toBe(true);
+    for (const role of ROLES.filter((r) => r !== 'proprietor' && r !== 'bursar')) {
+      expect(
+        roleHasPermission(role, 'employees:bank'),
+        `${role} must not have employees:bank`,
+      ).toBe(false);
     }
   });
 });

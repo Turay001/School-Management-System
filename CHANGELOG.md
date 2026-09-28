@@ -28,32 +28,36 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          292 passed / 292, 14 files
-npm run format:check  exit 0
+npm run test          321 passed / 321, 17 files
+npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green
-git status            see Phase 5 - three commits, uncommitted as of writing
 ```
 
 | Test file                                              | Tests |
 | ------------------------------------------------------ | ----- |
 | `repositories/postgres/__tests__/repository.test.ts`   | 51    |
 | `services/payroll.test.ts`                             | 27    |
+| `services/bank-export.test.ts`                         | 8     |
 | `lib/errors.test.ts`                                   | 23    |
-| `repositories/postgres/__tests__/queryBuilder.test.ts` | 40    |
-| `auth/permissions.test.ts`                             | 17    |
+| `lib/money.test.ts`                                    | 10    |
+| `lib/format.test.ts`                                   | 7     |
+| `repositories/postgres/__tests__/queryBuilder.test.ts` | 42    |
+| `auth/permissions.test.ts`                             | 18    |
 | `db/__tests__/consistency.test.ts`                     | 16    |
 | `db/__tests__/roles.test.ts`                           | 14    |
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
 | `db/__tests__/policy-hardening.test.ts`                | 13    |
-| `db/__tests__/integrity.test.ts`                       | 44    |
+| `db/__tests__/integrity.test.ts`                       | 45    |
 | `db/__tests__/migrations.test.ts`                      | 9     |
-| `db/__tests__/rls.test.ts`                             | 9     |
-| `db/__tests__/views.test.ts`                           | 7     |
+| `db/__tests__/rls.test.ts`                             | 10    |
+| `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
 
-Two commands still fail, both deliberately and both recorded below:
-`npm run build` (there is no `app/` directory because no UI exists) and, before
-Phase 4, `npm run format:check`.
+Two checks sit outside `npm run verify`, and both are recorded here so the
+exclusion is deliberate rather than silent: `npm run build`, excluded since
+Phase 1 (when no UI existed; the shipped verification set stays stable), and
+`npm run format:check`, which as of Phase 7 fails across the whole tree on a
+Prettier engine drift - see the formatting note in Phase 7.
 
 ### The database is live, and both write bugs are fixed and proven
 
@@ -828,3 +832,125 @@ happy path is still blocked on live data (no second app user; no staff with
 salary + bank records), which `README.md` and `docs/payroll-workflow.md` state
 plainly. `postgres` password rotation remains unresolved (the "Outstanding
 risk" note above).
+
+## Phase 7 — Existing staff can now be given bank details; the dashboard stopped crashing
+
+Two live problems were closed in this phase: the dashboard crashed at runtime
+on a string where a number had to be, and there was no way to give an existing
+employee a bank account.
+
+### Money aggregates: the string-number bug (migration 018)
+
+`sum(bigint)` returns `numeric` in PostgreSQL, and node-postgres has no parser
+for `numeric` — it arrives in the app as a **string**. The pool registers a
+parser only for bigint (OID 20), so every stored amount is a JS number but
+every naked `sum(...)` is not. Four views and three service queries aggregated
+money that way, so `formatMoney` in `src/lib/money.ts` correctly refused to
+render `"320000"` and the dashboard card threw:
+
+```
+formatMoney received a non-safe-integer value: 320000
+```
+
+The fix is one cast, repeated at every source: `sum(...)::bigint` (or
+`::bigint` on the whole expression when arithmetic follows). Bigint is the type
+every stored amount already uses, so the driver's parser applies and the money
+guard gets a real number.
+
+- The canonical view bodies in migration 011 now cast every money aggregate, so
+  a fresh install never creates the numeric columns (the casts sit next to the
+  existing `count(*)::integer` convention).
+- **Migration 018** is the upgrade path for deployed databases. Real PostgreSQL
+  refused `CREATE OR REPLACE VIEW` for the column type change (error `42P16`),
+  so 018 drops and recreates all four views in dependency order —
+  `v_class_fee_outstanding` reads `v_student_fee_balances`, so it is dropped
+  first — then re-applies `security_invoker` (015's fix) and re-grants `SELECT`
+  to `samjona_app` (012's grant dies with a dropped view), and finishes with a
+  fail-loudly `do $$` block that raises unless every money column is bigint and
+  every view is still security_invoker.
+- The three service queries with naked sums got the same cast in code:
+  `dashboard.ts` (`monthly_base_total`), `fees.ts` (summary), `reports.ts`
+  (expense-category `total`).
+
+Applied to the live database and recorded in `supabase_migrations.schema_migrations`
+as `018`; a probe then ran the exact crashing query and confirmed
+`monthly_base_total` arrives as a JS number. Regression tests pin the contract:
+`views.test.ts` asserts every money column of the four views is `typeof
+'number'`, and `integrity.test.ts` asserts `net_actual` from
+`v_payroll_run_summary` is strictly the recomputed total, not its string.
+
+### The bank-details gap: existing staff could never be given a bank account
+
+Salary was recorded only at staff creation (`/staff/new`), with bank details an
+all-or-nothing part of that same form — so any employee created without them
+could never be paid by bank transfer, and there was no repair path. New:
+
+- **`employees:bank` permission**, held by `proprietor` and `bursar` only,
+  mirroring the row-level INSERT/UPDATE policies on `employee_bank_accounts`:
+  an admin can edit staff records but not bank data (the RLS filter exists
+  precisely so the boundaries match).
+- **`updateStaffBank`** (`src/server/portal/staff.ts`): replacing a bank account
+  **closes** the current active primary row (`effective_to = today`,
+  `account_status = 'inactive'`) and **opens** a new primary row in the same
+  transaction. This is the close-and-insert pattern the schema's
+  `employee_bank_accounts_one_primary` and `employee_bank_accounts_number_unique`
+  partial unique indexes are shaped for: never two live primaries, never a
+  moment without one, and the retired number is freed for a new owner. Both
+  writes carry one audited `BANK_ACCOUNT_CHANGED` entry with the number masked
+  to its last four digits. Entity-order bookkeeping is read inside the
+  transaction (`select current_date::text as today`) so the effective dates can
+  never drift against each other.
+- **`POST /api/staff/[id]/bank`** — a route mirroring the deactivate route's
+  shape, returning the new bank id and the retired one.
+- **`BankDetailsButton`** (`src/components/staff/bank-details-button.tsx`) — a
+  button and three-field dialog in the bank card of the staff profile, gated on
+  `employees:bank`. The account number is never pre-filled (and never shown
+  after it is saved); bank and account name pre-fill when editing. The profile
+  page lists only `account_status = 'active'` rows, so a replaced account
+  disappears from view on the same save that publishes the new one.
+
+Tests: `permissions.test.ts` (only Proprietor and Bursar hold `employees:bank`),
+`rls.test.ts` (bank UPDATE works for both; for admin/principal/teacher RLS
+`USING` filters it to a zero-row no-op — fail-closed, not an exception), and
+`integrity.test.ts` (the full retire-and-replace lifecycle: exactly one live
+primary row, both rows preserved with audited history, retired number
+reusable).
+
+### Formatting note
+
+`npm run format:check` currently fails on ~150 files, including files this
+phase never touched (e.g. `src/components/ui/button.tsx` and most of
+`staff.ts`). The committed tree and the installed engine disagree: Prettier
+3.9.9 (pinned by the lockfile) collapses function-parameter and union types
+onto one line where the committed files wrap them. This is whole-tree engine
+drift, not a defect in any one file. The tree was left as committed rather than
+reformatted, because a ~150-file reformat would bury the substantive changes in
+noise; `format:check` is deliberately not part of `npm run verify`. When the
+reformat is wanted, run `npm run format` as its own commit.
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        321 passed / 321, 17 files
+npm run verify      green
+```
+
+### Live-database state at the end of this phase
+
+Measured, not assumed (probed after migration 018 was applied):
+
+- The two payrolled staff (`EMP-0016` Alimamy Turay, `EMP-0017` Alimamy Koroma)
+  are `active` with a live salary row but **no live bank row** — the exact gap
+  this phase closed, now recordable through the staff profile page.
+- Auth users: `kynxjones@gmail.com` (proprietor, `USR-0007`, active) and the
+  second auth user `obaiikamara67@gmail.com` (`9f2c3558-…`), who has **no
+  `app_users` profile and therefore no role** — so it cannot yet act as the
+  separate payroll approver (`payroll:approve` is held by `proprietor` only).
+- The live payroll happy path (generate → review → approve → export) therefore
+  still needs, in order: an `app_users` row with the `proprietor` role for the
+  second user, that user's login password (the app has no user-creation path by
+  design — the credential comes from the Supabase user-invitation flow), and
+  bank records for `EMP-0017`/`EMP-0016` added via the new profile-page button
+  once a proprietor is logged in.

@@ -11,7 +11,7 @@ tested by restoring it.
   (`app_users`, `employees`, `students`, `fees`, `payroll`, `expenses`,
   `leave`, `settings`, `audit_logs`, …). This is the whole system.
 - Migration **history** (`supabase_migrations.schema_migrations`) is already
-  in the repository as `supabase/migrations/001..017`, so the schema can be
+  in the repository as `supabase/migrations/001..018`, so the schema can be
   rebuilt from Git on a fresh project at any time. The data cannot.
 
 Sensitive data to plan for: backups contain the same rows the application

@@ -6,7 +6,7 @@ import { assertPermission, canAny, type SessionUser } from '../auth/permissions'
 import type { MinorUnits } from '../db/money';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
-import type { Employee, EmployeeStatus, SalaryRecord } from '../db/types';
+import type { BankAccount, Employee, EmployeeStatus, SalaryRecord } from '../db/types';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors';
 import {
   bankAccountRepository,
@@ -49,6 +49,12 @@ const CREATE_STAFF_SCHEMA = z.object({
 
 const DEACTIVATE_SCHEMA = z.object({
   reason: z.string().trim().min(10, 'Enter a reason of at least 10 characters').max(500),
+});
+
+const BANK_DETAILS_SCHEMA = z.object({
+  bankName: z.string().trim().min(2, 'Enter the bank name').max(80),
+  accountName: z.string().trim().min(2, 'Enter the account name').max(120),
+  accountNumber: z.string().trim().max(34),
 });
 
 export interface CreateStaffResult {
@@ -219,6 +225,108 @@ export async function deactivateStaff(user: SessionUser, id: string, raw: unknow
   });
 }
 
+export interface UpdateStaffBankResult {
+  bankId: string;
+  /** The account this change replaced, or null when the employee had no bank. */
+  previousId: string | null;
+}
+
+/**
+ * Add or replace an employee's bank account details.
+ *
+ * Bank records are never overwritten in place: the current account is closed
+ * (effective through today, then retired) and a NEW account row opens as the
+ * active primary from today. The audit trigger records both statements as
+ * BANK_ACCOUNT_CHANGED, so an auditor can always reconstruct the account the
+ * school actually paid into for any given month.
+ *
+ * Access is deliberately narrow: the RLS policies on employee_bank_accounts
+ * grant INSERT/UPDATE only to the Proprietor and Bursar, so `employees:bank`
+ * is granted to exactly those two roles.
+ */
+export async function updateStaffBank(
+  user: SessionUser,
+  employeeId: string,
+  raw: unknown,
+): Promise<UpdateStaffBankResult> {
+  assertPermission(user, 'employees:bank');
+
+  const parsed = BANK_DETAILS_SCHEMA.safeParse(raw);
+  if (!parsed.success) {
+    throw new ValidationError(
+      'Bank details are incorrect. Please fix the highlighted fields and try again.',
+      flattenZod(parsed.error),
+    );
+  }
+  const input = parsed.data;
+  const normalized = normalizeAccountNumber(input.accountNumber);
+
+  return withUserContext(user, async (tx) => {
+    const employees = employeeRepository(tx);
+    const accounts = bankAccountRepository(tx);
+
+    const employee = await employees.getById(employeeId);
+    // `null` means either "does not exist" or "RLS hides it from you". Both
+    // answer "not found" as a 404, revealing nothing.
+    if (!employee) throw new NotFoundError('Employee', employeeId);
+
+    // Read the effective date from the database so timezone drift between the
+    // server and Postgres can never make a closed range overlap an open one.
+    const { rows: dateRows } = await tx.query<{ today: string }>(
+      'select current_date::text as today',
+    );
+    const today = dateRows[0]!.today;
+
+    // The current active primary, if any. This is what payroll pays into.
+    const current = await accounts.list({
+      pageSize: 1,
+      sortBy: 'effective_from',
+      sortDir: 'desc',
+      filter: { eq: { employee_id: employeeId, account_status: 'active', is_primary: true } },
+    });
+    const previous = current.rows[0] ?? null;
+
+    // An active account number must belong to exactly one employee, and the
+    // employee's own row is about to be retired by this same transaction - so
+    // only a row held by SOMEONE ELSE counts as a conflict.
+    const clash = await accounts.list({
+      pageSize: 1,
+      filter: { eq: { account_number: normalized, account_status: 'active' } },
+    });
+    if (clash.rows[0] && clash.rows[0].employeeId !== employeeId) {
+      throw new ConflictError(
+        'Another active employee already uses this bank account number. Check the number and try again.',
+      );
+    }
+
+    let previousId: string | null = null;
+    if (previous) {
+      previousId = previous.id;
+      // Close the old account: effective through today, then retired so the
+      // number is free and payroll no longer pays into it.
+      await accounts.update(previous.id, {
+        effectiveTo: today,
+        accountStatus: 'inactive',
+      });
+    }
+
+    // Open the new account as the active primary from today.
+    const created = await accounts.create({
+      employeeId,
+      bankName: input.bankName,
+      accountName: input.accountName,
+      accountNumber: normalized,
+      accountStatus: 'active',
+      isPrimary: true,
+      effectiveFrom: today,
+      effectiveTo: null,
+      createdBy: user.id,
+    } as NewRecord<BankAccount>);
+
+    return { bankId: created.id, previousId };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
@@ -276,7 +384,9 @@ export async function getStaffDetail(user: SessionUser, id: string): Promise<Sta
       sortDir: 'desc',
     });
     const banks = await bankAccountRepository(tx).list({
-      filter: { eq: { employee_id: id } },
+      // Only the current, live account belongs on the profile card. Closed
+      // accounts remain in the table and the audit trail for history.
+      filter: { eq: { employee_id: id, account_status: 'active' } },
       sortBy: 'effective_from',
       sortDir: 'desc',
     });

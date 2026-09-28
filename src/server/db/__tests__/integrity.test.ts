@@ -283,6 +283,47 @@ describe('bank account security', () => {
     expect(serialised).toContain('****7766');
     expect(serialised).not.toContain('SECRET-99887766');
   });
+
+  it('retires the old account and frees its number when replaced', async () => {
+    // The exact steps the service layer runs to replace a bank account:
+    // close the current active row (effective through today, then retired)
+    // and open a new active primary. Nothing is overwritten in place.
+    const employeeId = await createEmployee({
+      name: 'Replace Bank Employee',
+      accountNumber: 'REP-0001',
+    });
+    await db.query(
+      `update employee_bank_accounts
+          set effective_to = current_date, account_status = 'inactive'
+        where employee_id = $1 and account_status = 'active'`,
+      [employeeId],
+    );
+    await db.query(
+      `insert into employee_bank_accounts
+         (employee_id, bank_name, account_name, account_number, is_primary, effective_from)
+       values ($1, 'New Bank', 'Replace Bank Employee', 'REP-0002', true, current_date)`,
+      [employeeId],
+    );
+
+    // Only the NEW account is a live primary.
+    const { rows: live } = await db.query<{ account_number: string }>(
+      `select account_number from employee_bank_accounts
+        where employee_id = $1 and account_status = 'active' and is_primary and effective_to is null`,
+      [employeeId],
+    );
+    expect(live.map((r) => r.account_number)).toEqual(['REP-0002']);
+
+    // History is preserved, not destroyed: both rows exist on file.
+    const { rows: all } = await db.query<{ account_number: string; account_status: string }>(
+      `select account_number, account_status from employee_bank_accounts where employee_id = $1`,
+      [employeeId],
+    );
+    expect(all).toHaveLength(2);
+    expect(all.map((r) => r.account_status).sort()).toEqual(['active', 'inactive']);
+
+    // The retired number is free again: a different employee may take it.
+    await createEmployee({ name: 'Inherits Retired Number', accountNumber: 'REP-0001' });
+  });
 });
 
 // ===========================================================================
@@ -541,11 +582,17 @@ describe('payroll totals reconcile', () => {
     const emp = await createEmployee({ name: 'Reconcile Employee' });
     await addItem(run.id, emp, { basic: 123456, allowances: 1, deductions: 456 });
 
-    const { rows } = await db.query<{ totals_reconcile: boolean; net_actual: string | number }>(
+    const { rows } = await db.query<{ totals_reconcile: boolean; net_actual: number }>(
       'select totals_reconcile, net_actual from v_payroll_run_summary where run_id = $1',
       [run.id],
     );
     expect(rows[0]!.totals_reconcile).toBe(true);
+
+    // net = basic + allowances - deductions = 123456 + 1 - 456 = 123001.
+    // `net_actual` is `sum()` of the item nets, cast to bigint (migration 018).
+    // node-postgres returns an uncast numeric as a string, which would make
+    // this strict `toBe` fail - that is exactly the regression this pins.
+    expect(rows[0]!.net_actual).toBe(123001);
   });
 });
 

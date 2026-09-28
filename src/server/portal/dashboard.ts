@@ -99,7 +99,9 @@ async function staffOverview(tx: Queryable): Promise<StaffOverview> {
        count(*) filter (where e.status = 'active')::int                     as active_staff,
        count(*) filter (where e.status = 'active' and s.id is null)::int    as active_missing_salary,
        count(*) filter (where e.status = 'active' and b.id is null)::int    as active_missing_bank,
-       coalesce(sum(s.base_salary) filter (where e.status = 'active'), 0)   as monthly_base_total
+       -- sum(bigint) is numeric, which node-postgres returns as a string; the
+       -- cast keeps this column a JS number (see src/lib/money.ts).
+       coalesce(sum(s.base_salary) filter (where e.status = 'active'), 0)::bigint as monthly_base_total
      from employees e
      left join employee_salary_history s
        on s.employee_id = e.id and s.effective_to is null

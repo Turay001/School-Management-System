@@ -172,7 +172,7 @@ export async function getExpenseCategoryReport(
       expense_count: number;
       total: number;
     }>(
-      `select e.category_name, count(*)::int as expense_count, sum(e.amount) as total
+      `select e.category_name, count(*)::int as expense_count, sum(e.amount)::bigint as total
          from expenses e
         where e.status in ('approved', 'paid')
         group by e.category_name

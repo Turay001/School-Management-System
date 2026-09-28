@@ -1,102 +1,66 @@
 -- ==========================================================================
--- SAMJONA SMS - 011: Views
+-- SAMJONA SMS - 018: Money columns in views are bigint, not numeric
 -- ==========================================================================
--- Balances and summaries are VIEWS, not cached tables.
+-- THE BUG THIS FIXES
+-- ------------------
+-- PostgreSQL's `sum(bigint)` returns the type `numeric`, not `bigint`. The
+-- application's database driver registers a type parser for bigint (OID 20)
+-- so every stored amount arrives in JavaScript as a real number, but `numeric`
+-- has no parser and arrives as a STRING.
 --
--- Reason: a stored balance is a second source of truth that drifts. The
--- specification requires the balance to be derived from authoritative
--- records and forbids manual override. A view is always correct by
--- construction, so there is no synchronisation strategy to get wrong.
+-- Four views aggregated money with naked `sum(...)` calls, and two of them
+-- also did arithmetic on those numeric results:
 --
--- At the expected scale (hundreds of students, not millions) a view over
--- indexed aggregates is effectively instant. If measurement ever shows a
--- problem, the correct escalation is a MATERIALIZED VIEW refreshed by a
--- trigger - not a hand-maintained balance column. See docs/architecture.md.
+--   v_student_fee_balances    total_due / total_paid / total_adjusted / balance
+--   v_payroll_run_summary     gross_actual / deductions_actual / net_actual
+--   v_monthly_financial_summary  every money column and net_position
+--   v_class_fee_outstanding   total_due / total_paid / total_outstanding
 --
--- SECURITY: none of these views are declared `security_invoker`. That is fixed
--- in migration 015, which alters them all. The reason is in 011's history:
--- a view runs as its owner, so without that option these views bypass the RLS
--- policies on every table they read - and one of them exposes bank account
--- numbers. Do not recreate a view here without carrying the option across.
+-- The concrete failure (demonstrated on the live dashboard):
 --
--- MONEY TYPES: every aggregate or arithmetic expression below is cast to
--- `bigint` - the type every stored amount uses. A naked PostgreSQL aggregate
--- like `sum(bigint)` returns `numeric`, which node-postgres hands back as a
--- STRING; the application's money guard (src/lib/money.ts) then refuses to
--- render it. The casts keep every amount a real number end to end. Migration
--- 018 re-applies these casts to databases created before this fix existed.
+--   formatMoney received a non-safe-integer value: 320000
+--
+-- `formatMoney` in src/lib/money.ts refuses to render a value that is not a
+-- JS number, so a `"320000"` string from the view crashed the dashboard card.
+-- The fees and reports pages had the same landmine wired to them.
+--
+-- THE FIX
+-- -------
+-- Cast every money aggregate (and each expression that derives from one) to
+-- `bigint`, matching the type every stored amount uses. The driver's parser
+-- then converts the column to a JS number, and src/lib/money.ts can sanity-
+-- check it. The same casts were also added to the canonical view bodies in
+-- migration 011, so a fresh install never creates the numeric columns;
+-- THIS migration is the upgrade path for databases created before that.
+--
+-- Notes on technique:
+--  * The migration DROPS each view and CREATES it again. `CREATE OR REPLACE
+--    VIEW` cannot change a column's data type (PostgreSQL error 42P16); the
+--    whole point here is a type change, so replacement is impossible by
+--    definition. Drop order matters: a view that reads another must be
+--    dropped first, and both members of such a pair are recreated in the same
+--    transaction so they never appear half-migrated.
+--  * Security invoker is restored with `ALTER VIEW ... SET` AFTER the
+--    recreate, exactly as migration 015 does. A plain drop+recreate would
+--    silently re-derive the insecure owner-privilege default that 015 exists
+--    to prevent, and the ALTER form is the one verified to stick.
 -- ==========================================================================
 
+begin;
 
--- --------------------------------------------------------------------------
--- Employee current salary
--- --------------------------------------------------------------------------
--- The OPEN row (effective_to IS NULL) is the current salary. The partial
--- unique index guarantees there is at most one, so this returns at most one
--- row per employee.
+-- Dependency order: v_class_fee_outstanding reads v_student_fee_balances, so
+-- it must go first. The other two have no view dependents.
+drop view public.v_class_fee_outstanding;
+drop view public.v_student_fee_balances;
+drop view public.v_payroll_run_summary;
+drop view public.v_monthly_financial_summary;
 
-create or replace view v_employee_current_salary as
-select
-  e.id            as employee_id,
-  e.employee_code,
-  e.full_name,
-  e.status,
-  e.position,
-  e.department,
-  e.employment_date,
-  s.base_salary,
-  s.allowances,
-  s.deductions,
-  s.effective_from,
-  (s.base_salary + s.allowances - s.deductions) as monthly_net_estimate
-from employees e
-left join employee_salary_history s
-  on s.employee_id = e.id and s.effective_to is null;
-
-comment on view v_employee_current_salary is
-  'Employee plus their current (open) salary record. The estimate is indicative; payroll uses its own snapshot.';
-
-
--- --------------------------------------------------------------------------
--- Current bank account per employee
--- --------------------------------------------------------------------------
--- Bank data is separated into its own view so the UI never accidentally
--- SELECTs it for a list of employees that does not need it.
-
-create or replace view v_employee_primary_bank as
-select
-  b.employee_id,
-  b.bank_name,
-  b.account_name,
-  b.account_number,
-  b.effective_from
-from employee_bank_accounts b
-where b.is_primary
-  and b.account_status = 'active'
-  and b.effective_to is null;
-
-
--- --------------------------------------------------------------------------
--- STUDENT FEE BALANCES
--- --------------------------------------------------------------------------
---   balance = total_due - total_paid - total_adjustments
---
--- A positive balance is money still owed.
--- A negative balance is a CREDIT - the student has overpaid. It is reported
--- as such and is never silently absorbed or clamped to zero.
---
--- Convention: a positive fee_adjustments.amount REDUCES the balance owed
--- (a scholarship, a sibling discount, a write-off agreed with the parent).
-
-create or replace view v_student_fee_balances as
+create view public.v_student_fee_balances as
 with assigned as (
   select
     a.student_id,
     a.academic_year_id,
     a.term_id,
-    -- A waived assignment is still a record of what was assessed, but it
-    -- is not owed, so it contributes zero. `sum(bigint)` is `numeric`, so the
-    -- cast to bigint keeps the amount a JS number at the driver (see header).
     sum(case when a.is_waived then 0 else a.amount_due end)::bigint as total_due,
     count(*)::integer as assignment_count
   from student_fee_assignments a
@@ -143,7 +107,6 @@ select
   coalesce(p.total_paid, 0)     as total_paid,
   coalesce(j.total_adjusted, 0) as total_adjusted,
   coalesce(a.total_due, 0) - coalesce(p.total_paid, 0) - coalesce(j.total_adjusted, 0) as balance,
-  -- Convenience flag so the UI can highlight debtors without doing arithmetic.
   (coalesce(a.total_due, 0) - coalesce(p.total_paid, 0) - coalesce(j.total_adjusted, 0)) > 0 as is_in_arrears,
   (coalesce(a.total_due, 0) - coalesce(p.total_paid, 0) - coalesce(j.total_adjusted, 0)) < 0 as is_in_credit,
   coalesce(a.assignment_count, 0) as assignment_count,
@@ -156,18 +119,7 @@ left join assigned a  on a.student_id = k.student_id and a.academic_year_id = k.
 left join paid     p  on p.student_id = k.student_id and p.academic_year_id = k.academic_year_id and p.term_id = k.term_id
 left join adjusted j  on j.student_id = k.student_id and j.academic_year_id = k.academic_year_id and j.term_id = k.term_id;
 
-comment on view v_student_fee_balances is
-  'Computed student balances. Always derived - there is no stored balance column to drift.';
-
-
--- --------------------------------------------------------------------------
--- Payroll run summary
--- --------------------------------------------------------------------------
--- Independently recomputes totals from the lines, so the integrity test
---   sum(payroll_items.net) == payroll_runs.total_net
--- is available as a query any operator or test can run.
-
-create or replace view v_payroll_run_summary as
+create view public.v_payroll_run_summary as
 select
   r.id                as run_id,
   r.run_code,
@@ -190,19 +142,14 @@ select
   r.exported_at,
   r.archived_at,
   r.reopen_reason,
-  -- Recomputed independently of the stored header totals. Each sum is
-  -- bigint-cast so the whole column is `bigint`, not `numeric` (see header).
   (select count(*)::integer   from payroll_items i where i.payroll_run_id = r.id) as item_count_actual,
   (select coalesce(sum(i.gross), 0)       from payroll_items i where i.payroll_run_id = r.id)::bigint as gross_actual,
   (select coalesce(sum(i.deductions), 0)  from payroll_items i where i.payroll_run_id = r.id)::bigint as deductions_actual,
   (select coalesce(sum(i.net), 0)         from payroll_items i where i.payroll_run_id = r.id)::bigint as net_actual,
-  -- True only when header and lines agree. Used by the integrity test and
-  -- surfaced as a warning on the payroll review screen.
   (r.total_net = (select coalesce(sum(i.net), 0) from payroll_items i where i.payroll_run_id = r.id)
    and r.total_gross = (select coalesce(sum(i.gross), 0) from payroll_items i where i.payroll_run_id = r.id)
    and r.employee_count = (select count(*)::integer from payroll_items i where i.payroll_run_id = r.id)
   ) as totals_reconcile,
-  -- Bank readiness: lines approved for export that lack payment details.
   (select count(*)::integer
      from payroll_items i
     where i.payroll_run_id = r.id
@@ -213,17 +160,7 @@ join payroll_periods p on p.id = r.period_id
 left join app_users gu on gu.id = r.generated_by
 left join app_users au on au.id = r.approved_by;
 
-comment on view v_payroll_run_summary is
-  'Payroll run header plus independently recomputed totals, with a totals_reconcile flag.';
-
-
--- --------------------------------------------------------------------------
--- Monthly financial summary
--- --------------------------------------------------------------------------
--- Income from approved payroll and from fee payments, against approved
--- expenses. Used by the dashboard and the financial report.
-
-create or replace view v_monthly_financial_summary as
+create view public.v_monthly_financial_summary as
 select
   m.month_start,
   to_char(m.month_start, 'YYYY-MM') as period,
@@ -258,12 +195,7 @@ left join lateral (
     and e.status in ('approved', 'paid')
 ) exp on true;
 
-
--- --------------------------------------------------------------------------
--- Outstanding fees by class
--- --------------------------------------------------------------------------
-
-create or replace view v_class_fee_outstanding as
+create view public.v_class_fee_outstanding as
 select
   c.id as class_id,
   c.name as class_name,
@@ -272,8 +204,6 @@ select
   b.term_id,
   t.name  as term,
   count(distinct b.student_id)::integer as student_count,
-  -- Each of these sums is over a bigint column in v_student_fee_balances, but
-  -- `sum` still yields numeric, so each must be cast back to bigint.
   sum(b.total_due)::bigint      as total_due,
   sum(b.total_paid)::bigint     as total_paid,
   sum(b.balance)::bigint        as total_outstanding,
@@ -284,3 +214,78 @@ join classes  c  on c.id = s.class_id
 join academic_years ay on ay.id = c.academic_year_id
 join terms t     on t.id = b.term_id
 group by c.id, c.name, c.level, ay.name, b.term_id, t.name;
+
+
+-- Recreate did not carry 015's security_invoker over; restore it exactly the
+-- way 015 does so the table policies keep applying to view reads.
+alter view public.v_student_fee_balances       set (security_invoker = true);
+alter view public.v_payroll_run_summary        set (security_invoker = true);
+alter view public.v_monthly_financial_summary  set (security_invoker = true);
+alter view public.v_class_fee_outstanding      set (security_invoker = true);
+
+-- Dropping wiped every grant on all four views; migration 012 gave the app
+-- role SELECT on them. Reapply exactly as 012 does.
+grant select on
+  v_student_fee_balances, v_payroll_run_summary,
+  v_monthly_financial_summary, v_class_fee_outstanding
+to samjona_app;
+
+
+-- --------------------------------------------------------------------------
+-- Post-condition: fail loudly if any money column is still numeric or a view
+-- lost its security_invoker. A silent partial application would otherwise
+-- leave the fee page or the dashboard capable of crashing again.
+-- --------------------------------------------------------------------------
+
+do $$
+declare
+  v_bad text[] := array[]::text[];
+  v_col record;
+begin
+  for v_col in (
+    select table_name, column_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and (
+        (table_name = 'v_student_fee_balances'
+         and column_name in ('total_due', 'total_paid', 'total_adjusted', 'balance'))
+        or (table_name = 'v_payroll_run_summary'
+         and column_name in ('gross_actual', 'deductions_actual', 'net_actual'))
+        or (table_name = 'v_monthly_financial_summary'
+         and column_name in ('payroll_total', 'fees_collected', 'total_expenses', 'net_position'))
+        or (table_name = 'v_class_fee_outstanding'
+         and column_name in ('total_due', 'total_paid', 'total_outstanding'))
+      )
+      and data_type <> 'bigint'
+  )
+  loop
+    v_bad := v_bad || format('%s.%s (%s)', v_col.table_name, v_col.column_name, v_col.data_type);
+  end loop;
+
+  if v_bad is not null and cardinality(v_bad) > 0 then
+    raise exception 'SAMJONA 018: money columns are still not bigint: %',
+      array_to_string(v_bad, ', ');
+  end if;
+
+  for v_col in (
+    select c.relname
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind = 'v'
+      and c.relname in (
+        'v_student_fee_balances', 'v_payroll_run_summary',
+        'v_monthly_financial_summary', 'v_class_fee_outstanding'
+      )
+      and not (c.reloptions is not null and 'security_invoker=true' = any (c.reloptions))
+  )
+  loop
+    v_bad := v_bad || format('view %s lost security_invoker', v_col.relname);
+  end loop;
+
+  if v_bad is not null and cardinality(v_bad) > 0 then
+    raise exception 'SAMJONA 018: schema not in the required state: %',
+      array_to_string(v_bad, ', ');
+  end if;
+end $$;
+
+commit;

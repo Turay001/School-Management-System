@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   'employees:read_own',
   'employees:write',
   'employees:deactivate',
+  'employees:bank',
 
   'payroll:read',
   'payroll:generate',
@@ -66,6 +67,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
   bursar: [
     'employees:read',
+    'employees:bank',
     'payroll:read',
     'payroll:generate',
     'payroll:review',

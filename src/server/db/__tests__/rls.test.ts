@@ -184,6 +184,51 @@ describe('row level security is enforced, not merely enabled', () => {
     ).toBe(1);
   });
 
+  it('lets only the Proprietor and Bursar update bank account details', async () => {
+    // Give the update an employer to act on so a permitted role has a real row.
+    const { rows } = await db.query<{ id: string }>(
+      `insert into employees (full_name, position, employment_date, status)
+       values ('Updatable Bank Holder', 'Teacher', date '2024-01-01', 'active') returning id`,
+    );
+    const employeeId = rows[0]!.id;
+    await db.query(
+      `insert into employee_bank_accounts (employee_id, bank_name, account_name, account_number)
+       values ($1, 'Test Bank', 'Updatable Bank Holder', 'UPD-0001')`,
+      [employeeId],
+    );
+
+    const updateAs = async (role: string, userId: string): Promise<number> => {
+      await db.exec('begin');
+      try {
+        await db.exec('set local role samjona_app');
+        await db.exec(`set local app.user_role = '${role}'`);
+        await db.exec(`set local app.user_id = ${quote(userId)}`);
+        const { rows: updated } = await db.query(
+          `update employee_bank_accounts set bank_name = 'Renamed Bank' where employee_id = $1 returning id`,
+          [employeeId],
+        );
+        await db.exec('commit');
+        return updated.length;
+      } catch (err) {
+        await db.exec('rollback');
+        throw err;
+      }
+    };
+
+    // The two roles that prepare a payment may change bank details.
+    await expect(updateAs('proprietor', PROPRIETOR)).resolves.toBe(1);
+    await expect(updateAs('bursar', PROPRIETOR)).resolves.toBe(1);
+
+    // Everyone else - including admin, who edits other staff data - cannot
+    // even see the row to change it: the policy's USING clause filters the
+    // UPDATE to nothing, so it affects zero rows. This is the narrowest write
+    // surface in the system after payroll itself, and it fails closed rather
+    // than raising, so a denied role learns nothing about the record.
+    for (const role of ['admin', 'principal', 'teacher'] as const) {
+      expect(await updateAs(role, PROPRIETOR)).toBe(0);
+    }
+  });
+
   it('limits a teacher to students in their own class', async () => {
     const count = await visibleCount(
       'select count(*)::text as count from students',

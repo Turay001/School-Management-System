@@ -148,6 +148,21 @@ database with:
 - `SERVICE_DATABASE_URL` set (startup `validateConfig` reports it otherwise);
 - `npm run db:verify-writes` green (the service-role payroll probes).
 
+Both salary and bank records are now achievable entirely through the UI:
+
+- **salary** is entered when a member of staff is created (`/staff/new`, as
+  part of the single all-or-nothing creation form);
+- **bank details** for an existing member of staff are added or replaced from
+  the staff profile (`/staff/[id]`) via the **Add/Edit bank details** button in
+  the bank card. The button is gated to the `proprietor` and `bursar` roles
+  (`employees:bank` permission) — the same two roles the row-level policies on
+  `employee_bank_accounts` allow to write — so an admin who edits other staff
+  data cannot touch bank records. Replacing an account closes the current
+  primary row (`effective_to = today`) and opens a new one in the same
+  transaction, so the bank never sees an overlapping or a missing active
+  account; the retired row stays in the audit trail and its account number is
+  freed for the new owner.
+
 The `scripts/smoke-payroll-negative.ts` script verifies the service-context
 plumbing against a live database **without writing anything**: it only runs on
 a period with zero eligible employees, expects `PreconditionError`, and

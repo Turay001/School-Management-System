@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { EmptyState } from '@/components/ui/empty-state';
 import { IconBank, IconCalendar, IconUser } from '@/components/icons';
 import { DeactivateButton } from '@/components/staff/deactivate-button';
+import { BankDetailsButton } from '@/components/staff/bank-details-button';
 
 /**
  * STAFF PROFILE
@@ -58,6 +59,7 @@ export default async function StaffProfilePage({
 
   const { employee, salaries, banks } = detail;
   const canDeactivate = can(user, 'employees:deactivate') && employee.status === 'active';
+  const canEditBank = can(user, 'employees:bank');
 
   return (
     <div className="space-y-6">
@@ -118,13 +120,26 @@ export default async function StaffProfilePage({
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <IconBank className="size-4 text-muted-foreground" />
-                Bank account
-              </CardTitle>
-              <CardDescription>
-                Used for payroll transfers. Numbers are masked after entry.
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <IconBank className="size-4 text-muted-foreground" />
+                    Bank account
+                  </CardTitle>
+                  <CardDescription>
+                    Used for payroll transfers. Numbers are masked after entry.
+                  </CardDescription>
+                </div>
+                {canEditBank ? (
+                  <BankDetailsButton
+                    employeeId={employee.id}
+                    employeeName={employee.fullName}
+                    hasBank={banks.length > 0}
+                    currentBankName={banks[0]?.bankName ?? null}
+                    currentAccountName={banks[0]?.accountName ?? null}
+                  />
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent>
               {banks.length === 0 ? (

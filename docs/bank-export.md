@@ -22,6 +22,13 @@ real bank is exactly the kind of failure this project exists to avoid.
 > Treat that warning as a hard stop until the school supplies the real
 > format file.
 
+Bank details for an existing member of staff are recorded from the staff
+profile page (`/staff/[id]`) — the **Add/Edit bank details** button in the bank
+card, available only to the Proprietor and Bursar. Replacing an account closes
+the current primary row and opens the new one in one transaction, so the running
+account never has a gap or an overlap and the previous number is freed for a new
+owner. See ["Exercising the happy path"](payroll-workflow.md).
+
 ## What a real format looks like in the database
 
 `bank_export_templates` (migration `006`) is data-driven so the school's
