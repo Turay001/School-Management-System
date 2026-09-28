@@ -70,7 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Administration',
     items: [
-      { href: '/reports', label: 'Reports', access: ['reports:read'], icon: IconReports, placeholder: true },
+      { href: '/reports', label: 'Reports', access: ['reports:read'], icon: IconReports },
       {
         href: '/notifications',
         label: 'Notifications',
