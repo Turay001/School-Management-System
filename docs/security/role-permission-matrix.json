@@ -1,0 +1,94 @@
+{
+  "schema": "samjona-sms/rbac-matrix@1",
+  "generated_from": "src/server/auth/permissions.ts (ROLE_PERMISSIONS)",
+  "audited_phase": "Phase 6",
+  "audit_date": "2026-09-28",
+  "roles": ["proprietor", "bursar", "admin", "principal", "teacher"],
+  "permissions": [
+    "employees:read", "employees:read_own", "employees:write", "employees:deactivate", "employees:bank",
+    "payroll:read", "payroll:generate", "payroll:review", "payroll:approve", "payroll:reopen", "payroll:export",
+    "students:read", "students:read_own_class", "students:write",
+    "fees:read", "fees:record", "fees:adjust",
+    "expenses:read", "expenses:write", "expenses:approve",
+    "attendance:read", "attendance:write",
+    "leave:request", "leave:approve", "leave:read_own",
+    "subjects:read", "subjects:manage",
+    "results:read", "results:record",
+    "reportcards:read",
+    "reports:read", "reports:financial",
+    "audit:read",
+    "users:manage",
+    "settings:manage"
+  ],
+  "matrix": {
+    "proprietor": [
+      "employees:read", "employees:read_own", "employees:write", "employees:deactivate", "employees:bank",
+      "payroll:read", "payroll:generate", "payroll:review", "payroll:approve", "payroll:reopen", "payroll:export",
+      "students:read", "students:read_own_class", "students:write",
+      "fees:read", "fees:record", "fees:adjust",
+      "expenses:read", "expenses:write", "expenses:approve",
+      "attendance:read", "attendance:write",
+      "leave:request", "leave:approve", "leave:read_own",
+      "subjects:read", "subjects:manage",
+      "results:read", "results:record",
+      "reportcards:read",
+      "reports:read", "reports:financial",
+      "audit:read",
+      "users:manage",
+      "settings:manage"
+    ],
+    "bursar": [
+      "employees:read", "employees:bank",
+      "payroll:read", "payroll:generate", "payroll:review", "payroll:export",
+      "students:read",
+      "fees:read", "fees:record",
+      "expenses:read", "expenses:write",
+      "leave:read_own",
+      "reports:read", "reports:financial"
+    ],
+    "admin": [
+      "employees:read", "employees:write", "employees:deactivate",
+      "students:read", "students:write",
+      "attendance:read", "attendance:write",
+      "leave:request", "leave:approve", "leave:read_own",
+      "expenses:read", "expenses:write",
+      "subjects:read", "subjects:manage",
+      "results:read", "results:record",
+      "reportcards:read",
+      "reports:read"
+    ],
+    "principal": [
+      "employees:read",
+      "payroll:read", "payroll:export",
+      "students:read", "students:write",
+      "fees:read",
+      "expenses:read",
+      "attendance:read",
+      "leave:read_own",
+      "subjects:read",
+      "results:read",
+      "reportcards:read",
+      "reports:read",
+      "audit:read"
+    ],
+    "teacher": [
+      "employees:read_own",
+      "students:read_own_class",
+      "attendance:write",
+      "leave:request",
+      "leave:read_own",
+      "subjects:read",
+      "results:read",
+      "results:record",
+      "reportcards:read"
+    ]
+  },
+  "notes": [
+    "proprietor holds all 35 permissions; every other role holds a strict subset.",
+    "credentials: admin has NO salary/financial permissions (employees:bank, payroll:*, fees:*). Salary figures are withheld from admin at the service boundary (Phase 6 F-7).",
+    "bursar has no approval permissions (no expenses:approve, no payroll:approve/reopen, no leave:approve).",
+    "attendance:read / attendance:write are declared dead: the attendance feature is not enabled and no product code enforces them.",
+    "teacher holds attendance:write but not attendance:read (asymmetry of a dead module); both are unreserved.",
+    "fees:adjust, payroll:approve and payroll:reopen are single-role (proprietor-only) by design."
+  ]
+}

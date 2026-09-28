@@ -2,7 +2,7 @@ import 'server-only';
 
 import { z } from 'zod';
 
-import { assertPermission, canAny, type SessionUser } from '../auth/permissions';
+import { assertPermission, can, canAny, type SessionUser } from '../auth/permissions';
 import type { MinorUnits } from '../db/money';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
@@ -96,6 +96,21 @@ export interface StaffDetail {
   employee: Employee;
   salaries: SalaryRecord[];
   banks: StaffBankSummary[];
+}
+
+/**
+ * SALARY VISIBILITY (Phase 6 - financial separation).
+ *
+ * Salary amounts are financial data. A role may see them only when the
+ * permission matrix grants a financial dimension (`payroll:read` or
+ * `employees:bank`). An HR/academic role like Admin holds `employees:read`
+ * but deliberately holds neither, so the service must withhold salary
+ * figures from it - exactly as `students.ts` withholds fee balances from
+ * roles without `fees:read`. A staff member's OWN salary stays visible via
+ * `/my-profile`, whose row is RLS-scoped to `app_current_employee_id()`.
+ */
+export function canViewSalaries(user: SessionUser | null | undefined): boolean {
+  return can(user, 'payroll:read') || can(user, 'employees:bank');
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +351,19 @@ export async function listStaff(user: SessionUser, options: StaffListOptions = {
     throw new ForbiddenError('Your role does not allow viewing the staff list.');
   }
 
+  return withUserContext(user, (tx) => loadStaffList(tx, user, options));
+}
+
+/**
+ * The transaction-bound staff list, exported so the RLS harness can run the
+ * real query under the caller's GUC context. `listStaff` delegates here after
+ * its permission gate.
+ */
+export async function loadStaffList(
+  tx: Queryable,
+  user: SessionUser,
+  options: StaffListOptions = {},
+): Promise<StaffListResult> {
   const q = options.q?.trim().slice(0, 100) ?? '';
   const status = EMPLOYEE_STATUS.includes(options.status as EmployeeStatus)
     ? (options.status as EmployeeStatus)
@@ -343,25 +371,28 @@ export async function listStaff(user: SessionUser, options: StaffListOptions = {
   const page = Math.max(1, Math.trunc(options.page ?? 1));
   const pageSize = Math.min(50, Math.max(1, Math.trunc(options.pageSize ?? 15)));
 
-  return withUserContext(user, async (tx) => {
-    const employees = employeeRepository(tx);
-    const result = await employees.list({
-      page,
-      pageSize,
-      sortBy: 'full_name',
-      sortDir: 'asc',
-      filter: {
-        search: q ? { term: q, fields: ['full_name', 'employee_code', 'position', 'department'] } : undefined,
-        eq: status ? { status } : undefined,
-      },
-    });
-
-    const salaries = await currentSalariesByIds(tx, result.rows.map((row) => row.id));
-    return {
-      ...result,
-      rows: result.rows.map((row) => ({ ...row, baseSalary: salaries.get(row.id) ?? null })),
-    };
+  const employees = employeeRepository(tx);
+  const result = await employees.list({
+    page,
+    pageSize,
+    sortBy: 'full_name',
+    sortDir: 'asc',
+    filter: {
+      search: q ? { term: q, fields: ['full_name', 'employee_code', 'position', 'department'] } : undefined,
+      eq: status ? { status } : undefined,
+    },
   });
+
+  // Salary figures ride on the staff list only for roles with a financial
+  // permission. For every other role `baseSalary` is null (types already
+  // allow it) - the UI renders '—' and no amount ever leaves the server.
+  const salaries = canViewSalaries(user)
+    ? await currentSalariesByIds(tx, result.rows.map((row) => row.id))
+    : new Map<string, number>();
+  return {
+    ...result,
+    rows: result.rows.map((row) => ({ ...row, baseSalary: salaries.get(row.id) ?? null })),
+  };
 }
 
 export async function getStaffDetail(user: SessionUser, id: string): Promise<StaffDetail> {
@@ -369,7 +400,13 @@ export async function getStaffDetail(user: SessionUser, id: string): Promise<Sta
     throw new ForbiddenError('Your role does not allow viewing staff records.');
   }
 
-  return withUserContext(user, (tx) => loadStaffDetail(tx, id));
+  return withUserContext(user, async (tx) => {
+    // Salary history rides the detail record only for financial roles, or when
+    // the record is the caller's own (self-service, RLS-scoped to one row).
+    const includeSalaries =
+      canViewSalaries(user) || (await findOwnEmployeeId(tx, user.id)) === id;
+    return loadStaffDetail(tx, id, { includeSalaries });
+  });
 }
 
 /**
@@ -386,7 +423,11 @@ export async function getStaffDetail(user: SessionUser, id: string): Promise<Sta
  * 404, and a teacher reading their own record receives their own salary rows
  * but no bank rows.
  */
-export async function loadStaffDetail(tx: Queryable, id: string): Promise<StaffDetail> {
+export async function loadStaffDetail(
+  tx: Queryable,
+  id: string,
+  options: { includeSalaries?: boolean } = {},
+): Promise<StaffDetail> {
   const employee = await employeeRepository(tx).getById(id);
   // `null` means either "does not exist" or "RLS hides it from you". Both
   // answer "not found" as a 404, revealing nothing about records the caller
@@ -395,11 +436,17 @@ export async function loadStaffDetail(tx: Queryable, id: string): Promise<StaffD
 
   // Sequential, not Promise.all: these share one transaction client, and pg
   // forbids more than one query in flight at once.
-  const salaries = await salaryRecordRepository(tx).list({
-    filter: { eq: { employee_id: id } },
-    sortBy: 'effective_from',
-    sortDir: 'desc',
-  });
+  // `includeSalaries` defaults to true for the exported seam's RLS tests
+  // (own-record reads); the user-facing `getStaffDetail` computes it from the
+  // caller's permissions.
+  const salaries =
+    options.includeSalaries === false
+      ? { rows: [] as SalaryRecord[] }
+      : await salaryRecordRepository(tx).list({
+          filter: { eq: { employee_id: id } },
+          sortBy: 'effective_from',
+          sortDir: 'desc',
+        });
   const banks = await bankAccountRepository(tx).list({
     // Only the current, live account belongs on the profile card. Closed
     // accounts remain in the table and the audit trail for history.

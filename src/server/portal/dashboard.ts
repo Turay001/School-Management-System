@@ -4,6 +4,7 @@ import type { MinorUnits } from '../db/money';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
 import { can, canAny, type SessionUser } from '../auth/permissions';
+import { canViewSalaries } from './staff';
 
 /**
  * DASHBOARD DATA
@@ -25,8 +26,13 @@ export interface StaffOverview {
   activeStaff: number;
   activeMissingSalary: number;
   activeMissingBank: number;
-  /** Sum of current base salaries of ACTIVE staff, in minor units. */
-  monthlyBaseTotal: MinorUnits;
+  /**
+   * Sum of current base salaries of ACTIVE staff, in minor units.
+   * `null` for roles without a financial permission (see `canViewSalaries`);
+   * the type intentionally distinguishes "no money figure allowed" from
+   * "zero", so a null is never rendered as NLe 0.00.
+   */
+  monthlyBaseTotal: MinorUnits | null;
 }
 
 export interface LatestPayroll {
@@ -62,7 +68,7 @@ export async function getDashboardData(user: SessionUser): Promise<DashboardData
     // per client, so these run sequentially - never Promise.all. The
     // permission gates decide which sections exist for this role.
     const staff = canAny(user, ['employees:read', 'employees:read_own'])
-      ? await staffOverview(tx)
+      ? await staffOverview(tx, canViewSalaries(user))
       : null;
     const payroll = can(user, 'payroll:read') ? await latestPayroll(tx) : null;
     const canReadFees = can(user, 'fees:read');
@@ -539,7 +545,7 @@ export async function getBursarDashboardData(
 // Named queries
 // ---------------------------------------------------------------------------
 
-async function staffOverview(tx: Queryable): Promise<StaffOverview> {
+async function staffOverview(tx: Queryable, includeBaseTotal: boolean): Promise<StaffOverview> {
   const { rows } = await tx.query<{
     total_staff: number;
     active_staff: number;
@@ -568,7 +574,7 @@ async function staffOverview(tx: Queryable): Promise<StaffOverview> {
     activeStaff: row?.active_staff ?? 0,
     activeMissingSalary: row?.active_missing_salary ?? 0,
     activeMissingBank: row?.active_missing_bank ?? 0,
-    monthlyBaseTotal: row?.monthly_base_total ?? 0,
+    monthlyBaseTotal: includeBaseTotal ? (row?.monthly_base_total ?? 0) : null,
   };
 }
 

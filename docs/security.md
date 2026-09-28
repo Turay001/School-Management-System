@@ -118,3 +118,34 @@ school requires it; it is **not** currently used. Bank account numbers are
 masked on screen (`****...1234` style) regardless — see the fees/payroll
 screens. If at-rest encryption is enabled, the masking and export paths must
 be revisited and covered by tests.
+
+## Phase 6 — authorization audit (2026-09-28)
+
+The Phase 6 audit added three executable artefacts under
+`src/server/security/__tests__/` and two documents:
+
+- `docs/security/role-permission-matrix.md` (+ `.json`) — the full
+  Role × Permission matrix, machine- and human-readable, with the executive
+  design decisions.
+- `docs/security/domain-security-matrix.md` — the second view: what each role
+  can do per functional domain and which RLS scope backs it.
+- `src/server/security/__tests__/permission-matrix.test.ts` — the matrix made
+  executable (fails on any drift in either direction) plus a static
+  product-source scan that proves every `enforced` permission is referenced
+  somewhere and every `declared-dead` one (attendance) is referenced nowhere.
+- `src/server/security/__tests__/write-gates.test.ts` — every write/approval
+  service denies every non-holder role **and** anonymous callers with a
+  `ForbiddenError` before any database work; covers the Phase 6 F-3 hoisting
+  of the payroll transition permission check.
+- `src/server/security/__tests__/salary-separation.test.ts` — the F-7 salary
+  separation (admin sees `baseSalary: null`, financial roles see figures,
+  teacher sees only own history) and the F-2 paid-expense provenance, all
+  validated against the real schema via the transaction seams.
+
+Two Phase 6 corrections are reflected in this document's earlier sections:
+salary figures are financial data surfaced only to `payroll:read` /
+`employees:bank` roles (F-7), and paying an expense records `approved_by` /
+`approved_at` like approving one (F-2). All other Phase 6 findings are either
+accepted divergences (GATE 4) or pending owner approval; see the Phase 6
+report (session transcript) for the current-behavior → risk → evidence →
+proposed-correction format of every item.

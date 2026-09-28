@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
 import { getSessionUser } from '@/server/auth/bootstrap';
-import { listStaff } from '@/server/portal/staff';
+import { canViewSalaries, listStaff } from '@/server/portal/staff';
 import { formatMoney } from '@/lib/money';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ export default async function StaffPage({
   const status = sp.status ?? '';
   const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
 
+  const canSeeSalaries = canViewSalaries(user);
   const result = await listStaff(user, { q, status, page, pageSize: 15 });
 
   return (
@@ -100,7 +101,7 @@ export default async function StaffPage({
                 <TableHead>Staff member</TableHead>
                 <TableHead>Position</TableHead>
                 <TableHead>Phone</TableHead>
-                <TableHead className="text-right">Base salary</TableHead>
+                {canSeeSalaries ? <TableHead className="text-right">Base salary</TableHead> : null}
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">View</TableHead>
               </TableRow>
@@ -124,9 +125,11 @@ export default async function StaffPage({
                     ) : null}
                   </TableCell>
                   <TableCell className="tabular-nums">{staff.phone ?? '—'}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {staff.baseSalary !== null ? formatMoney(staff.baseSalary) : '—'}
-                  </TableCell>
+                  {canSeeSalaries ? (
+                    <TableCell className="text-right tabular-nums">
+                      {staff.baseSalary !== null ? formatMoney(staff.baseSalary) : '—'}
+                    </TableCell>
+                  ) : null}
                   <TableCell>
                     <StatusBadge status={staff.status} />
                   </TableCell>

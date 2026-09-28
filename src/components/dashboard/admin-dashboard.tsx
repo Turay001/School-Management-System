@@ -72,13 +72,13 @@ export default async function AdminDashboard({ user }: { user: AuthenticatedUser
         />
         <StatCard
           label="Monthly Base Payroll"
-          value={data.staff ? formatMoney(data.staff.monthlyBaseTotal) : '—'}
+          value={data.staff?.monthlyBaseTotal != null ? formatMoney(data.staff.monthlyBaseTotal) : '—'}
           hint={
             data.staff && data.staff.activeMissingSalary > 0
               ? `${data.staff.activeMissingSalary} staff have no salary yet`
               : 'Current base salaries, active staff'
           }
-          show={canAny(user, ['employees:read', 'payroll:read'])}
+          show={can(user, 'payroll:read') || can(user, 'employees:bank')}
         />
         <StatCard
           label="Students in Arrears"

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { z } from 'zod';
 
-import { assertPermission, can, type SessionUser } from '../auth/permissions';
+import { assertPermission, can, type Permission, type SessionUser } from '../auth/permissions';
 import type { MinorUnits } from '../db/money';
 import type { Queryable } from '../db/pool';
 import { withServiceContext, withUserContext } from '../db/transaction';
@@ -517,6 +517,29 @@ export async function generatePayroll(user: SessionUser, raw: unknown): Promise<
   });
 }
 
+/** The permission each workflow target requires, asserted BEFORE the service
+ * role context. Authorizing here means an unauthorized actor cannot even look
+ * up the run - the lookup and the ConflictError (which names the run code and
+ * its status) are unreachable for them, and future branches cannot forget the
+ * check after the privilege boundary has been crossed. */
+const TRANSITION_PERMISSIONS: Record<
+  'under_review' | 'approved' | 'reopened' | 'exported' | 'archived',
+  Permission
+> = {
+  under_review: 'payroll:review',
+  approved: 'payroll:approve',
+  reopened: 'payroll:reopen',
+  exported: 'payroll:export',
+  archived: 'payroll:export',
+};
+
+function assertPayrollTransitionPermission(
+  user: SessionUser,
+  to: keyof typeof TRANSITION_PERMISSIONS,
+): void {
+  assertPermission(user, TRANSITION_PERMISSIONS[to]);
+}
+
 export async function transitionPayrollRun(
   user: SessionUser,
   id: string,
@@ -527,6 +550,13 @@ export async function transitionPayrollRun(
     throw new ValidationError('This payroll action is not valid.', flattenZod(parsed.error));
   }
   const { to, reason, notes } = parsed.data;
+
+  // Authorize BEFORE crossing into the service-role context. The run lookup
+  // and the ConflictError (which names the run code and its status) must not
+  // be reachable by a role without the specific transition permission, and
+  // the permission decision must never be deferred until after a privilege-
+  // boundary crossing where a future branch could forget to check.
+  assertPayrollTransitionPermission(user, to);
 
   return withServiceContext(async (tx) => {
     await tx.query('select set_config($1, $2, true)', ['app.user_id', user.id]);
@@ -551,11 +581,7 @@ export async function transitionPayrollRun(
     }
 
     switch (to) {
-      case 'under_review':
-        assertPermission(user, 'payroll:review');
-        break;
       case 'approved':
-        assertPermission(user, 'payroll:approve');
         // Segregation of duties. The database enforces this too (generated_by
         // must differ from approved_by); this check turns a 42501 into a
         // message the approver can act on.
@@ -567,16 +593,15 @@ export async function transitionPayrollRun(
         }
         break;
       case 'reopened':
-        assertPermission(user, 'payroll:reopen');
         if (!reason || reason.trim().length < 10) {
           throw new ValidationError(
             'Reopening a payroll must state a reason of at least 10 characters.',
           );
         }
         break;
+      case 'under_review':
       case 'exported':
       case 'archived':
-        assertPermission(user, 'payroll:export');
         break;
     }
 

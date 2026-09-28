@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { assertPermission, canAny, type SessionUser } from '../auth/permissions';
 import { withUserContext } from '../db/transaction';
+import type { Queryable } from '../db/pool';
 import type { ExpenseStatus } from '../db/types';
 import { EXPENSE_STATUSES } from '../db/types';
 import {
@@ -300,51 +301,70 @@ export async function decideExpense(
     throw new ValidationError('Rejecting an expense requires a reason of at least 10 characters.');
   }
 
-  return withUserContext(user, async (tx) => {
-    const current = await tx.query<{ id: string; status: string; requested_by: string | null }>(
-      `select id, status, requested_by from expenses where id = $1 limit 1`,
-      [id],
+  return withUserContext(user, (tx) => applyExpenseDecision(tx, user, id, input));
+}
+
+export interface ExpenseDecisionInput {
+  decision: 'approve' | 'reject' | 'pay';
+  reason?: string | null;
+  paidReference?: string | null;
+}
+
+/**
+ * Transaction-bound expense decision, exported so the RLS harness runs the
+ * exact decision SQL (approve/reject/pay) under the caller's GUC context.
+ * `decideExpense` delegates here after its permission gate and validation.
+ */
+export async function applyExpenseDecision(
+  tx: Queryable,
+  user: SessionUser,
+  id: string,
+  input: ExpenseDecisionInput,
+): Promise<{ expenseId: string }> {
+  const current = await tx.query<{ id: string; status: string; requested_by: string | null }>(
+    `select id, status, requested_by from expenses where id = $1 limit 1`,
+    [id],
+  );
+  if (!current.rows[0]) throw new NotFoundError('Expense', id);
+
+  const row = current.rows[0];
+  if (row.requested_by === user.id) {
+    throw new PreconditionError(
+      'The person who requested an expense cannot also decide it. Another user must do this.',
     );
-    if (!current.rows[0]) throw new NotFoundError('Expense', id);
+  }
 
-    const row = current.rows[0];
-    if (row.requested_by === user.id) {
-      throw new PreconditionError(
-        'The person who requested an expense cannot also decide it. Another user must do this.',
-      );
-    }
+  const target: ExpenseStatus =
+    input.decision === 'approve' ? 'approved' : input.decision === 'reject' ? 'rejected' : 'paid';
+  assertTransition(row.status, target);
 
-    const target: ExpenseStatus =
-      input.decision === 'approve' ? 'approved' : input.decision === 'reject' ? 'rejected' : 'paid';
-    assertTransition(row.status, target);
+  if (input.decision === 'approve') {
+    await tx.query(
+      `update expenses
+          set status = 'approved', approved_by = $2, approved_at = now(),
+              rejection_reason = null, updated_at = now()
+        where id = $1`,
+      [id, user.id],
+    );
+  } else if (input.decision === 'reject') {
+    await tx.query(
+      `update expenses
+          set status = 'rejected', approved_by = $2, approved_at = now(),
+              rejection_reason = $3, updated_at = now()
+        where id = $1`,
+      [id, user.id, input.reason?.trim() ?? null],
+    );
+  } else {
+    await tx.query(
+      `update expenses
+          set status = 'paid', approved_by = $3, approved_at = now(),
+              paid_at = now(), paid_reference = $2, updated_at = now()
+        where id = $1`,
+      [id, input.paidReference ?? null, user.id],
+    );
+  }
 
-    if (input.decision === 'approve') {
-      await tx.query(
-        `update expenses
-            set status = 'approved', approved_by = $2, approved_at = now(),
-                rejection_reason = null, updated_at = now()
-          where id = $1`,
-        [id, user.id],
-      );
-    } else if (input.decision === 'reject') {
-      await tx.query(
-        `update expenses
-            set status = 'rejected', approved_by = $2, approved_at = now(),
-                rejection_reason = $3, updated_at = now()
-          where id = $1`,
-        [id, user.id, reason],
-      );
-    } else {
-      await tx.query(
-        `update expenses
-            set status = 'paid', paid_at = now(), paid_reference = $2, updated_at = now()
-          where id = $1`,
-        [id, input.paidReference ?? null],
-      );
-    }
-
-    return { expenseId: id };
-  });
+  return { expenseId: id };
 }
 
 // ---------------------------------------------------------------------------

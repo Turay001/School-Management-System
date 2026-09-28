@@ -30,9 +30,10 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  // Never let a Google service-account credential reach the browser bundle.
-  // The googleapis client is imported exclusively from src/server/**, which
-  // is server-only. `npm run check:secrets` enforces this in CI.
+  // No Google service-account credential can reach the browser bundle: the
+  // googleapis client is imported exclusively from src/server/**, which is
+  // server-only (TS boundaries + `server-only` imports). Env values are read
+  // only via src/server/env.ts and never exposed as NEXT_PUBLIC_*.
   experimental: {
     serverActions: {
       bodySizeLimit: '2mb',

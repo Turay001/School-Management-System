@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
 import { getSessionUser } from '@/server/auth/bootstrap';
-import { getStaffDetail } from '@/server/portal/staff';
+import { canViewSalaries, getStaffDetail } from '@/server/portal/staff';
 import { NotFoundError } from '@/lib/errors';
 import { formatMoney } from '@/lib/money';
 import { formatDate } from '@/lib/format';
@@ -60,6 +60,9 @@ export default async function StaffProfilePage({
   const { employee, salaries, banks } = detail;
   const canDeactivate = can(user, 'employees:deactivate') && employee.status === 'active';
   const canEditBank = can(user, 'employees:bank');
+  // Salary history is financial data. Roles without a financial permission get
+  // an empty array from the service; this guard keeps the card itself hidden.
+  const canSeeSalaries = canViewSalaries(user);
 
   return (
     <div className="space-y-6">
@@ -163,42 +166,44 @@ export default async function StaffProfilePage({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <IconCalendar className="size-4 text-muted-foreground" />
-                Salary history
-              </CardTitle>
-              <CardDescription>Current salary is the open row.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {salaries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No salary record yet.</p>
-              ) : (
-                <ul className="space-y-3 text-sm">
-                  {salaries.map((salary) => {
-                    const isCurrent = salary.effectiveTo === null;
-                    return (
-                      <li key={salary.id} className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium tabular-nums">{formatMoney(salary.baseSalary)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDate(salary.effectiveFrom)} – {isCurrent ? 'present' : formatDate(salary.effectiveTo)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground">
-                            +{formatMoney(salary.allowances)} / −{formatMoney(salary.deductions)}
-                          </p>
-                          {isCurrent ? <Badge variant="success">Current</Badge> : null}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          {canSeeSalaries ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <IconCalendar className="size-4 text-muted-foreground" />
+                  Salary history
+                </CardTitle>
+                <CardDescription>Current salary is the open row.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {salaries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No salary record yet.</p>
+                ) : (
+                  <ul className="space-y-3 text-sm">
+                    {salaries.map((salary) => {
+                      const isCurrent = salary.effectiveTo === null;
+                      return (
+                        <li key={salary.id} className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium tabular-nums">{formatMoney(salary.baseSalary)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(salary.effectiveFrom)} – {isCurrent ? 'present' : formatDate(salary.effectiveTo)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">
+                              +{formatMoney(salary.allowances)} / −{formatMoney(salary.deductions)}
+                            </p>
+                            {isCurrent ? <Badge variant="success">Current</Badge> : null}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       </div>
 
