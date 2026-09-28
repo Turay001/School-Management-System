@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SAMJONA">
+  <!--
+    Favicon. The same monogram and the same slate-teal as the application
+    wordmark, drawn here as an asset because a favicon cannot use a React
+    component. Values are copied from --primary in src/app/globals.css
+    (hsl 187 62% 24%) rather than approximated; change both together.
+    See public/branding/SOURCES.md.
+  -->
+  <rect width="64" height="64" rx="14" fill="#10454f" />
+  <text
+    x="32"
+    y="33"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="30"
+    font-weight="700"
+    letter-spacing="-0.5"
+    fill="#eefbfb"
+  >SJ</text>
+</svg>

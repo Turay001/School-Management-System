@@ -63,6 +63,46 @@
   /* A dark theme is deliberately not shipped (see above). */
 }
 
+/*
+ * SAMJONA brand alias layer.
+ *
+ * An indirection over the palette above, not a second palette. Two reasons:
+ *
+ *  1. The public-facing page and the application share one colour system by
+ *     construction. Because `--samjona-primary` IS `--primary`, a change to
+ *     the brand cannot land on the marketing page and miss the login screen.
+ *  2. A rebrand has a single seam. The school's official colours are not known
+ *     at the time of writing - they are not recorded anywhere in the
+ *     repository - so the values above are marked as the working palette, not
+ *     as SAMJONA's official colours. When the school supplies them, the edit is
+ *     made here and the alias names do not move.
+ *
+ * `--samjona-highlight` and `--samjona-warm` introduce no new colour values:
+ * they are the same numbers as `--success` and `--warning`, given neutral
+ * names for decorative use so a decoration can never be mistaken for a status
+ * signal, and so a green chip in a page section never implies "paid".
+ */
+:root {
+  --samjona-background: var(--background);
+  --samjona-foreground: var(--foreground);
+  --samjona-card: var(--card);
+  --samjona-card-foreground: var(--card-foreground);
+  --samjona-primary: var(--primary);
+  --samjona-primary-foreground: var(--primary-foreground);
+  --samjona-accent: var(--accent);
+  --samjona-accent-foreground: var(--accent-foreground);
+  --samjona-muted: var(--muted);
+  --samjona-muted-foreground: var(--muted-foreground);
+  --samjona-border: var(--border);
+
+  /* Decorative only. Never used to encode a state. */
+  --samjona-highlight: var(--success);
+  --samjona-warm: var(--warning);
+
+  --samjona-radius: var(--radius);
+  --samjona-font-sans: var(--font-sans);
+}
+
 @layer base {
   * {
     @apply border-border;

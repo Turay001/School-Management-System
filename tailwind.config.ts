@@ -48,6 +48,34 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        // Brand alias layer. These resolve to the same values as the tokens
+        // above, so a page can talk about "brand" without the possibility of
+        // the brand drifting away from the application it promotes. See the
+        // alias block in src/app/globals.css.
+        samjona: {
+          background: 'hsl(var(--samjona-background))',
+          foreground: 'hsl(var(--samjona-foreground))',
+          card: {
+            DEFAULT: 'hsl(var(--samjona-card))',
+            foreground: 'hsl(var(--samjona-card-foreground))',
+          },
+          primary: {
+            DEFAULT: 'hsl(var(--samjona-primary))',
+            foreground: 'hsl(var(--samjona-primary-foreground))',
+          },
+          accent: {
+            DEFAULT: 'hsl(var(--samjona-accent))',
+            foreground: 'hsl(var(--samjona-accent-foreground))',
+          },
+          muted: {
+            DEFAULT: 'hsl(var(--samjona-muted))',
+            foreground: 'hsl(var(--samjona-muted-foreground))',
+          },
+          border: 'hsl(var(--samjona-border))',
+          // Decorative only. Never used to encode a state.
+          highlight: 'hsl(var(--samjona-highlight))',
+          warm: 'hsl(var(--samjona-warm))',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',

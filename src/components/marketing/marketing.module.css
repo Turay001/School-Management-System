@@ -1,0 +1,108 @@
+/*
+ * Marketing-only presentation layer.
+ *
+ * A CSS Module rather than a global stylesheet, deliberately. The application
+ * has one motion policy in src/app/globals.css: entrances under 200ms, because
+ * motion must never delay a financial action. That policy still holds here, but
+ * a landing page is read rather than operated, so it is allowed a slightly
+ * longer, scroll-linked entrance - and that exception must not be reachable
+ * from an application component by accident.
+ *
+ * Accessibility
+ * -------------
+ * Every animation here is decorative and every one of them is switched off
+ * under `prefers-reduced-motion: reduce`. That is not a courtesy fallback: for
+ * a visitor with vestibular sensitivity, an unrequested animation is the
+ * reason a page is unusable, and the content underneath is fully legible
+ * without it, so nothing is hidden behind a transition.
+ *
+ * No `scroll-behavior: smooth` either. It is a common addition here and it is
+ * a trap for exactly the same reason - it is unconditional, and it cannot be
+ * switched off by a media query from the user's side.
+ */
+
+.section {
+  /* Staggered fade-up, driven by a custom property set per element. */
+  animation: samjona-rise 260ms ease-out both;
+  animation-delay: var(--samjona-delay, 0ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section {
+    animation: none;
+  }
+}
+
+@keyframes samjona-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The hero's rule: a single hairline that widens on load. */
+.heroRule {
+  animation: samjona-rule 420ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroRule {
+    animation: none;
+  }
+}
+
+@keyframes samjona-rule {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/*
+ * A faint diagonal weave behind the hero, drawn with a gradient rather than an
+ * image. No asset, no network request, and it scales to any viewport without a
+ * second file.
+ */
+.weave {
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      hsl(var(--samjona-primary) / 0.05) 0px,
+      hsl(var(--samjona-primary) / 0.05) 1px,
+      transparent 1px,
+      transparent 9px
+    ),
+    repeating-linear-gradient(
+      45deg,
+      hsl(var(--samjona-primary) / 0.04) 0px,
+      hsl(var(--samjona-primary) / 0.04) 1px,
+      transparent 1px,
+      transparent 9px
+    );
+}
+
+/*
+ * Placeholder frame for a photograph the school has not supplied.
+ *
+ * The frame is visible on purpose. A blank rectangle reads as a broken image;
+ * a labelled frame reads as "this is a slot, and we know it is empty", which is
+ * the honest state. `public/branding/SOURCES.md` records that the slot exists
+ * and what belongs in it.
+ */
+.photoSlot {
+  background-image:
+    linear-gradient(hsl(var(--samjona-muted) / 0.9), hsl(var(--samjona-muted) / 0.9)),
+    repeating-linear-gradient(
+      45deg,
+      hsl(var(--samjona-border)) 0px,
+      hsl(var(--samjona-border)) 1px,
+      transparent 1px,
+      transparent 8px
+    );
+}

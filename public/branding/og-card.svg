@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Samjona International Academy — Digital School Management Platform">
+  <!--
+    Open Graph preview card. Drawn as SVG so it is text-searchable, diffable
+    and editable without a design tool.
+
+    IMPORTANT - BEFORE SHARING THE LINK OUTSIDE THE SCHOOL:
+    export this to a 1200x630 PNG and point metadata at that file instead.
+    Several social platforms ignore an SVG referenced as og:image. The file is
+    left as SVG deliberately: it is a placeholder that must be replaced with a
+    designed card, and an editable source is more useful than a flattened
+    placeholder PNG. See public/branding/SOURCES.md.
+
+    Colours are copied from src/app/globals.css (--primary / --background).
+  -->
+  <defs>
+    <pattern id="weave" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="18" height="18" fill="#f8fafb" />
+      <rect width="1" height="18" fill="#10454f" opacity="0.06" />
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#weave)" />
+
+  <rect x="80" y="76" width="72" height="72" rx="16" fill="#10454f" />
+  <text
+    x="116"
+    y="112"
+    text-anchor="middle"
+    dominant-baseline="central"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="32"
+    font-weight="700"
+    fill="#eefbfb"
+  >SJ</text>
+
+  <text
+    x="176"
+    y="102"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="34"
+    font-weight="700"
+    letter-spacing="1"
+    fill="#12212e"
+  >SAMJONA</text>
+  <text
+    x="178"
+    y="130"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="16"
+    font-weight="500"
+    letter-spacing="0.6"
+    fill="#5c6b7a"
+  >SCHOOL MANAGEMENT</text>
+
+  <text
+    x="80"
+    y="286"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="62"
+    font-weight="600"
+    fill="#12212e"
+  >Administration, fees, payroll</text>
+  <text
+    x="80"
+    y="358"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="62"
+    font-weight="600"
+    fill="#12212e"
+  >and results for one school</text>
+
+  <rect x="80" y="404" width="88" height="3" fill="#10454f" />
+
+  <text
+    x="80"
+    y="464"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="26"
+    fill="#41505f"
+  >Money is computed from records. Access is enforced</text>
+  <text
+    x="80"
+    y="502"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="26"
+    fill="#41505f"
+  >by the database. Unconfirmed rules are left visible.</text>
+
+  <text
+    x="80"
+    y="566"
+    font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-size="18"
+    font-weight="500"
+    letter-spacing="2.4"
+    fill="#7b8895"
+  >SIERRA LEONE</text>
+</svg>
