@@ -8,9 +8,12 @@ import {
   IconFees,
   IconLeave,
   IconPayroll,
+  IconReportCard,
   IconReports,
+  IconResults,
   IconSettings,
   IconStudent,
+  IconSubjects,
   IconUsers,
 } from '@/components/icons';
 import { can, canAny, type Permission, type SessionUser } from '@/server/auth/permissions';
@@ -39,12 +42,19 @@ export interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    items: [{ href: '/dashboard', label: 'Dashboard', access: ['employees:read'], icon: IconDashboard }],
+    items: [
+      { href: '/dashboard', label: 'Dashboard', access: ['employees:read'], icon: IconDashboard },
+    ],
   },
   {
     label: 'People',
     items: [
-      { href: '/staff', label: 'Staff', access: ['employees:read', 'employees:read_own'], icon: IconUsers },
+      {
+        href: '/staff',
+        label: 'Staff',
+        access: ['employees:read', 'employees:read_own'],
+        icon: IconUsers,
+      },
       {
         href: '/students',
         label: 'Students',
@@ -65,6 +75,24 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/payroll', label: 'Payroll', access: ['payroll:read'], icon: IconPayroll },
       { href: '/fees', label: 'Fees', access: ['fees:read'], icon: IconFees },
       { href: '/expenses', label: 'Expenses', access: ['expenses:read'], icon: IconExpenses },
+    ],
+  },
+  {
+    label: 'Academics',
+    items: [
+      { href: '/results', label: 'Results', access: ['results:read'], icon: IconResults },
+      {
+        href: '/report-cards',
+        label: 'Report Cards',
+        access: ['reportcards:read'],
+        icon: IconReportCard,
+      },
+      {
+        href: '/subjects',
+        label: 'Subjects',
+        access: ['subjects:manage'],
+        icon: IconSubjects,
+      },
     ],
   },
   {

@@ -128,6 +128,44 @@ export function IconSearch(p: IconProps) {
   );
 }
 
+export function IconResults(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8.5 12l2.5 2.5 4.5-5" />
+      <path d="M8.5 8h7M8.5 17h7" opacity={0.45} />
+    </Svg>
+  );
+}
+
+export function IconReportCard(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M6 3.5h12a2 2 0 0 1 2 2V20l-2.5-1.8L15 20l-2.5-1.8L10 20l-2.5-1.8L5 20V4.5A1 1 0 0 1 6 3.5Z" />
+      <path d="M9 9.5h7M9 12.8h7M9 16h4" />
+    </Svg>
+  );
+}
+
+export function IconUpload(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 16V5" />
+      <path d="m7.5 9.5 4.5-4.5 4.5 4.5" />
+      <path d="M4.5 20h15" />
+    </Svg>
+  );
+}
+
+export function IconSubjects(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 6.5C10.6 5 8.6 4.5 6.5 4.5c-1.2 0-2.2.2-3 .5v12c.8-.3 1.8-.5 3-.5 2.1 0 4.1.5 5.5 2 1.4-1.5 3.4-2 5.5-2 1.2 0 2.2.2 3 .5v-12c-.8-.3-1.8-.5-3-.5-2.1 0-4.1.5-5.5 2Z" />
+      <path d="M12 6.5V19.5" />
+    </Svg>
+  );
+}
+
 export function IconMenu(p: IconProps) {
   return (
     <Svg {...p}>

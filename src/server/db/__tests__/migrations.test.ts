@@ -58,6 +58,9 @@ describe('database migrations', () => {
       'leave_requests',
       'audit_logs',
       'settings',
+      'subjects',
+      'assessments',
+      'student_results',
     ];
 
     for (const table of expected) {

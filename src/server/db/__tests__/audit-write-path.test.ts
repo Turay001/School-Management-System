@@ -89,18 +89,20 @@ describe('every function that writes the audit trail', () => {
     // If this is zero the query regressed and every assertion below is
     // vacuous. It is the same failure mode migration 016 hit with a LIKE
     // pattern that matched nothing.
-    return expect(auditFunctions()).resolves.toHaveLength(7);
+    return expect(auditFunctions()).resolves.toHaveLength(9);
   });
 
-  it('includes all six from migration 010 and the one from 002', async () => {
+  it('includes all six from migration 010, the one from 002, and the two from 020', async () => {
     const names = (await auditFunctions()).map((f) => f.proname);
 
     expect(names).toEqual([
       'app_audit_adjustments',
+      'app_audit_assessments',
       'app_audit_bank_account_changes',
       'app_audit_employee_changes',
       'app_audit_fee_events',
       'app_audit_payroll_run',
+      'app_audit_results',
       'app_log_audit',
       'app_protect_salary_history',
     ]);

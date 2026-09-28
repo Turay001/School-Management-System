@@ -28,9 +28,9 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          327 passed / 327, 18 files
+npm run test          343 passed / 343, 19 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
-npm run verify        green
+npm run verify        green (typecheck + lint + test + build)
 ```
 
 | Test file                                              | Tests |
@@ -50,15 +50,19 @@ npm run verify        green
 | `db/__tests__/integrity.test.ts`                       | 45    |
 | `db/__tests__/migrations.test.ts`                      | 10    |
 | `db/__tests__/rls.test.ts`                             | 10    |
+| `db/__tests__/results-rls.test.ts`                     | 16    |
 | `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
 | `db/__tests__/payroll-workflow.test.ts`                | 5     |
 
-Two checks sit outside `npm run verify`, and both are recorded here so the
-exclusion is deliberate rather than silent: `npm run build`, excluded since
-Phase 1 (when no UI existed; the shipped verification set stays stable), and
-`npm run format:check`, which as of Phase 7 fails across the whole tree on a
-Prettier engine drift - see the formatting note in Phase 7.
+One check sits outside `npm run verify`, recorded here so the exclusion is
+deliberate rather than silent: `npm run format:check`, which as of Phase 7
+fails across the whole tree on a Prettier engine drift - see the formatting
+note in Phase 7. `npm run build` joined `verify` in Phase 9: a UI now exists
+for the whole surface it guards, so shipping a tree that does not compile would
+be a regression caught only later. The Phase 9 TypeScript is Prettier-clean;
+the migration is SQL, which Prettier has no parser for, and stays out of the
+formatter by definition.
 
 ### The database is live, and both write bugs are fixed and proven
 
@@ -1160,5 +1164,91 @@ trigger reads `payroll_items` at COMMIT, so the test's service group role needs
 npm run typecheck   exit 0
 npm run lint        exit 0
 npm run test        327 passed / 327, 18 files
+npm run verify      green
+```
+
+---
+
+## Phase 9 — Assessments, results and printable report cards
+
+The first academic feature. Teachers upload student results into named
+assessments and a printable report card renders the raw numbers. The scope was
+deliberately limited by what the school has supplied: no grading scale, pass
+mark or class rank exists as policy, so none is invented. The product shows raw
+marks, totals and percentages only, marks in an assessment that came without a
+confirmed rule as needing one (see `docs/architecture.md`).
+
+### Why this shape
+
+- **The report card is a print-out of the recorded facts.** Percentage is
+  `sum(recorded marks) / sum(max_marks of the assessments that have a recorded
+  mark)`; an assessment with no mark recorded is excluded from both sides, and
+  the card says so.
+- **Subjects are reference data owned by Admin + Proprietor.** Teachers pick
+  from the list; they cannot create subjects. No subjects are seeded - the
+  school enters its real list through the app.
+- **Marks entry has two paths**: CSV upload (one line per student,
+  `student_code,marks`, header row tolerated) and a manual per-student grid for
+  filling gaps. Both write through the same service function.
+- **Teachers are scoped by RLS, not by the UI**, the same `classes.teacher_id`
+  join migration 012 uses for students. The database refuses an assessment for
+  a class not theirs, a mark for a student outside the assessment's class, a
+  mark above the assessment maximum, a mark for an inactive student, and a term
+  from a different academic year than the class.
+
+### Migration 020 - self-contained module pattern
+
+New-tables-only, following the module convention (no edits to 012/001):
+
+- `subjects`, `assessments`, `student_results` plus code sequences, granted to
+  `samjona_app` (`usage, select` on sequences; `select, insert, update` on the
+  tables - **no DELETE**, matching the rest of the schema, and nothing for the
+  service role).
+- Integrity triggers `app_check_assessment_term_for_class` and
+  `app_check_student_result` (BEFORE, errors on the cross-table rules above).
+- Audit functions `app_audit_assessments` / `app_audit_results`
+  (`SECURITY DEFINER`, `search_path = public, pg_temp`, revoked from `public`,
+  matching the 016 hardening contract) writing `ASSESSMENT_CREATED`,
+  `ASSESSMENT_UPDATED`, `RESULT_RECORDED`, `RESULT_UPDATED`.
+- RLS enabled + FORCE on all three tables with explicit SELECT / INSERT /
+  UPDATE policies, split per the Phase 6 (`016`) no-`for all` rule.
+- `academic_years` / `terms` policies redefined: teachers gain read access for
+  form population, writes narrow from the 012 all-role shape to
+  proprietor/admin, the same surface `classes` has.
+
+### Real bugs found while building (every one caught by the harness first)
+
+| Bug                                                              | Where            | Why it mattered                                                                      |
+| ---------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------ |
+| `UNIQUE (lower(btrim(name)))` inside `CREATE TABLE`              | m020 subjects    | A syntax error - Postgres only allows column lists in a `UNIQUE` table constraint.   |
+| `new.` / `old.` used inside `CREATE POLICY`                      | m020 policies    | `new` is trigger syntax; policies refer to the row by bare column names.             |
+| Three new `for all` policies                                     | m020 subjects/calendar | Violated the 016 "no ALL policy" hardening; SELECT on write policies already removed. |
+| 016's `*_all_select` / `*_all_update` on `academic_years`/`terms` | m020 redefinition | They still granted bursar/principal UPDATE; dropped along with the old `for all`.    |
+| An RLS-blocked UPDATE does not raise                             | results-rls.test  | Denial is observed as "UPDATE 0"; asserting on an exception would prove nothing.     |
+
+### Files created
+
+- `supabase/migrations/020_assessments_results.sql`
+- `src/server/portal/results.ts` - service layer (subjects, assessments, marks
+  CSV/grid, report card rows; single transaction per write)
+- `src/app/api/{subjects,results,results/[id],results/[id]/marks,results/[id]/upload,report-cards,report-cards/[studentId]}/route.ts`
+- `src/app/(app)/{subjects,results,results/new,results/[id],report-cards,report-cards/[studentId]}/page.tsx`
+- `src/components/{results,report-cards,subjects}/*` client components
+- `src/server/db/__tests__/results-rls.test.ts` (16 tests)
+
+### Files modified
+
+- `src/server/auth/permissions.ts` - `subjects:read/manage`, `results:read/record`, `reportcards:read` in the matrix
+- `src/components/icons.tsx`, `src/components/layout/navigation.tsx` - Academics group
+- `src/server/db/__tests__/{migrations,audit-write-path}.test.ts` - new tables/functions
+- `package.json` - `npm run build` added to `verify`
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        343 passed / 343, 19 files (results-rls.test.ts = 16)
+npm run build       exit 0, all new routes compiled
 npm run verify      green
 ```

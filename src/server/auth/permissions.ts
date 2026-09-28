@@ -50,6 +50,12 @@ export const PERMISSIONS = [
   'leave:approve',
   'leave:read_own',
 
+  'subjects:read',
+  'subjects:manage',
+  'results:read',
+  'results:record',
+  'reportcards:read',
+
   'reports:read',
   'reports:financial',
 
@@ -95,6 +101,11 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'leave:read_own',
     'expenses:read',
     'expenses:write',
+    'subjects:read',
+    'subjects:manage',
+    'results:read',
+    'results:record',
+    'reportcards:read',
     'reports:read',
   ],
 
@@ -108,6 +119,9 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'expenses:read',
     'attendance:read',
     'leave:read_own',
+    'subjects:read',
+    'results:read',
+    'reportcards:read',
     'reports:read',
     'audit:read',
   ],
@@ -118,6 +132,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'attendance:write',
     'leave:request',
     'leave:read_own',
+    'subjects:read',
+    'results:read',
+    'results:record',
+    'reportcards:read',
   ],
 };
 
@@ -150,7 +168,10 @@ export function can(user: SessionUser | null | undefined, permission: Permission
   return roleHasPermission(user.role, permission);
 }
 
-export function canAny(user: SessionUser | null | undefined, perms: readonly Permission[]): boolean {
+export function canAny(
+  user: SessionUser | null | undefined,
+  perms: readonly Permission[],
+): boolean {
   if (!user) return false;
   return perms.some((p) => roleHasPermission(user.role, p));
 }

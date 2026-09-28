@@ -90,6 +90,7 @@ supplied, this software does not guess — it marks the state visibly and waits:
 | Absence/attendance policy                                                     | `ENABLE_ATTENDANCE_MODULE=false`; salary is never reduced for absence without an explicit written policy                                       |
 | Bank export format                                                            | `bank_export_formats` contains a **placeholder** format row; export waits for a real format — see [`docs/bank-export.md`](docs/bank-export.md) |
 | Reference data (term dates, expense categories, payroll eligibility statuses) | seeded as placeholders by migration `013`, flagged `is_placeholder`, shown with a "needs confirmation" badge                                   |
+| Grading scale, pass mark, grade bands, class rank                            | Results record raw marks only; report cards show marks, totals and percentages with **no** grade, pass/fail judgment or rank computed              |
 | School identity strings (name, address, phone, email)                         | Settings shows them as unconfirmed until the Proprietor saves real values                                                                      |
 
 This is why the UI shows "needs confirmation" badges rather than presenting a
@@ -124,6 +125,30 @@ There is one Reports page (`/reports`) whose sections are role-gated:
 `reports:read` is granted more widely so the page itself is visible to
 multiple roles, but the figures shown are filtered by the same matrix the
 module routes enforce.
+
+## Academics: subjects, assessments and results
+
+Teachers record student marks into named assessments (CSV upload or a manual
+grid) and a printable report card renders the raw facts. Two data rules
+matter:
+
+- **Teacher scope is RLS, not the UI.** A teacher sees and writes only the
+  classes they teach (`classes.teacher_id`, the same join migration 012 uses
+  for students). The database refuses an assessment for another class, a mark
+  for a student outside the assessment's class, a mark over the assessment
+  maximum, a mark for an inactive student, and a term from a different year
+  than the class.
+- **Subjects are admin-managed reference data.** Admin and Proprietor create
+  subjects; teachers only choose from the list.
+
+Report-card percentage is `sum(recorded marks) / sum(max_marks of assessments
+with a recorded mark)`; an assessment with no mark is excluded from both
+sides, and the card states that. No grade, pass/fail or rank is computed —
+that is school policy, per "No invented business rules".
+
+The academic calendar's write surface narrowed to proprietor/admin when this
+module arrived; teachers gained read access for form population. Migration
+`020` redefined those policies.
 
 ## Settings and audit
 
