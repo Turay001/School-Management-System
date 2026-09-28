@@ -85,7 +85,6 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Settings',
         access: ['settings:manage', 'users:manage', 'audit:read'],
         icon: IconSettings,
-        placeholder: true,
       },
     ],
   },
