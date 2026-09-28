@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          326 passed / 326, 18 files
+npm run test          327 passed / 327, 18 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green
 ```
@@ -48,7 +48,7 @@ npm run verify        green
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
 | `db/__tests__/policy-hardening.test.ts`                | 13    |
 | `db/__tests__/integrity.test.ts`                       | 45    |
-| `db/__tests__/migrations.test.ts`                      | 9     |
+| `db/__tests__/migrations.test.ts`                      | 10    |
 | `db/__tests__/rls.test.ts`                             | 10    |
 | `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
@@ -962,13 +962,10 @@ Measured, not assumed (probed after migration 018 was applied):
 
 ## Phase 8 — Live payroll happy-path walkthrough, and the real-Postgres-only bug it found
 
-The Phase 7 checklist is now closed for every step except the one that needs a
-credential: bank records exist, a run is generated and in review, and the
-segregation-of-duties check has been denied *live*. What is still missing is
-the second user's password, for the final approve + export.
-
-The walkthrough ran over the app's own HTTP routes against the running Next
-server, driving them with two signed-in users. Sign-in used the Supabase
+The Phase 7 checklist is closed: bank records exist, a run is generated, reviewed
+and — with a second user, as the segregation rule demands — approved and
+exported. The walkthrough ran over the app's own HTTP routes against the running
+Next server, driving them with two signed-in users. Sign-in used the Supabase
 password grant; the session cookie was forged in `@supabase/ssr`'s exact format
 (`sb-<ref>-auth-token` = `base64-` + base64url of the user session object), so
 every request went through the real API routes, real middleware, real service
@@ -1001,12 +998,102 @@ layer and real database — nothing was simulated.
 ### Status: awaiting the second user's password
 
 Approve + export require a sign-in as the **other** user — `kynxjones@gmail.com`
-(USR-0007), the account whose password has never worked from a fresh grant. The
-account is healthy (last signed in 2026-09-28 12:07:45), so a valid password
-exists; the value tried earlier is stale or mistyped. The run sits at
-`under_review`, which is the intended awaiting-approval state — not corruption
-— and `docs/payroll-workflow.md` is worded exactly for this: one user generates
-and reviews, a different user approves.
+(USR-0007), the account whose password has never worked from a fresh grant.
+The value tried earlier was stale or mistyped; the recovery-email route is
+throttle-limited and was not retried. The run sits at `under_review`, which is
+the intended awaiting-approval state — not corruption — and
+`docs/payroll-workflow.md` is worded exactly for this: one user generates and
+reviews, a different user approves.
+
+### Completed: approval and export with the second user
+
+With the operator's explicit approval, the account was reset the way the
+dashboard's "override password" function does it: a fresh strong password was
+generated, hashed *inside* PostgreSQL with `crypt($1, gen_salt('bf', 10))` — the
+same `$2a$10$` format the row already used — and written to `auth.users` over
+the admin connection. The stored hash was self-verified
+(`crypt($1, encrypted_password) = encrypted_password`) before anything else
+ran. A password change does not revoke the browser's existing session, so the
+owner's live sign-in was unaffected.
+
+Steps 6–8 then ran live over HTTP as USR-0007 (`samjona.admin`,
+`proprietor`):
+
+6. **Approve** (`POST /api/payroll/[id]/transition` `{to:'approved'}`) → **200**,
+   status `approved`. `generated_by` (USR-0008) ≠ `approved_by` (USR-0007), so
+   the segregation-of-duties rule — the service-layer check and the database
+   CHECK — passes for the first time with real users. `approved_by`, `approved_at`
+   set; audited `PAYROLL_APPROVED` attributed to USR-0007.
+7. **Export** (`GET /api/payroll/[id]/export`) → first **403**, then — after the
+   fix below — **200** `text/csv`. The transfer file has a header row and one
+   line per employee:
+   ```
+   Account Name,Account Number,Bank,Amount,Beneficiary Name,Payment Reference,Payroll Period
+   Alimamy Koroma,****0234,Sierra Leone Commercial Bank,1050.00,Alimamy Koroma,PAY-2026-09-0001/EMP-0017,September 2026
+   Alimamy Turay,****0123,Rokel Commercial Bank,2050.00,Alimamy Turay,PAY-2026-09-0001/EMP-0016,September 2026
+   ```
+   The amounts agree with `total_net`: 2,050.00 + 1,050.00 = 3,100.00 SLL, i.e.
+   the run's 310,000 minor units, so the template's minor→major scaling and the
+   snapshot totals reconcile exactly. `X-Payroll-Template` names the generic
+   reference-data template — *"Generic bank transfer template (PLACEHOLDER -
+   needs bank confirmation)"* — and the file is built from each item's
+   `bank_account_snapshot`, not from live employee rows.
+8. **Final live state** (probe over the admin connection):
+   ```
+   payroll_runs:   PAY-2026-09-0001  status=exported  revision=1
+                   generated_by=USR-0008  approved_by=USR-0007
+                   exported_at=2026-09-28T15:16:23Z
+   payroll_periods: September 2026  status=exported
+   audit_logs:     PAYROLL_CREATED  (USR-0008)
+                   PAYROLL_REVIEWED (USR-0008)
+                   PAYROLL_APPROVED (USR-0007)
+                   PAYROLL_EXPORTED (system — see the attribution note below)
+   ```
+   The `/payroll` page renders the run with its current status; it no longer
+   shows `under_review` or `approved` because the run moved on to `exported`.
+
+### The second walkthrough bug: export read a table the service role could not see
+
+Step 7 initially returned **403 `AUTH_FORBIDDEN`** — "Your role does not allow
+this action. Ask the Proprietor if you need access." — for a user who *was* the
+Proprietor and *did* hold the `payroll:export` permission (approve, one request
+earlier, had just succeeded with the same cookie). The message was a lie by
+indirection: `exportPayrollRun` reads `bank_export_templates` inside
+`withServiceContext`, which runs as `samjona_service`. That role has BYPASSRLS,
+which skips row-level security **policies** but not **table-level privileges** —
+and migration 014's grant list never included `bank_export_templates`. The read
+failed with PostgreSQL `42501 insufficient_privilege`, which `mapDbError`
+translates into exactly that ForbiddenError message.
+
+**Why the suite was green before.** No test executed the export statement (the
+portal layer cannot yet be pointed at the in-process PGlite) and no test
+asserted that the service role could read the templates table.
+
+**The fix.** `grant select on bank_export_templates to samjona_service;` —
+select-only, because templates are school configuration edited under the
+application role (which has full DML from migration 012); the service role only
+reads the *active* template to build the file:
+
+- **Canonical, for fresh installs:** migration `014_service_role.sql` now carries
+  the grant next to the rest of the service role's privileges.
+- **Upgrade path for deployed databases:** migration
+  `019_service_read_bank_export_templates.sql`, applied live via
+  `supabase db push --db-url` (only that file was pending).
+- **Regression:** `migrations.test.ts` gains *"lets the service role read bank
+  export templates"*, which switches to the real `samjona_service` created by
+  the migrations and selects from the table — this test would have caught the
+  bug at the schema level.
+
+### Also fixed: the export audit row was unattributed
+
+The live `PAYROLL_EXPORTED` row recorded `actor_name: 'system'` even though
+USR-0007 issued the file. `transitionPayrollRun` sets the `app.user_id` /
+`app.user_role` GUCs before its statements so the SECURITY DEFINER audit trigger
+can resolve the actor; `exportPayrollRun` did not, so `app_user_id()` returned
+NULL and the trigger fell back to `'system'`. `exportPayrollRun` now sets the
+same GUCs, so future exports are attributed to the issuer. The walkthrough's own
+row predates the fix and is left exactly as recorded — `audit_logs` is
+append-only by trigger, which is the point.
 
 ### The bug the walkthrough uncovered: 42P08 on the transition statement
 
@@ -1072,6 +1159,6 @@ trigger reads `payroll_items` at COMMIT, so the test's service group role needs
 ```
 npm run typecheck   exit 0
 npm run lint        exit 0
-npm run test        326 passed / 326, 18 files
+npm run test        327 passed / 327, 18 files
 npm run verify      green
 ```

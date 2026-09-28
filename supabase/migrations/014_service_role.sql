@@ -49,6 +49,12 @@ grant select, insert, update on
   app_users, settings
 to samjona_service;
 
+-- The service role also reads bank export templates while building the
+-- transfer file for an approved run. Migration 012 grants the APPLICATION
+-- role full DML on templates; the service role only ever reads the active
+-- template, so it gets SELECT and nothing else.
+grant select on bank_export_templates to samjona_service;
+
 -- Deliberately NOT granted: delete on anything.
 -- The service role also gets no DELETE even though it bypasses RLS, so a
 -- careless query fails rather than destroying a financial record.

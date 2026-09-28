@@ -181,4 +181,23 @@ describe('database migrations', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.rolbypassrls, 'payroll generation role must bypass RLS').toBe(true);
   });
+
+  it('lets the service role read bank export templates', async () => {
+    const db = await freshDatabase();
+    await runMigrations(db);
+
+    // Live-only bug (never visible in unit tests because the portal layer
+    // cannot run against PGlite): exportPayrollRun reads the active
+    // bank_export_templates row inside withServiceContext, but migration 014
+    // did not grant samjona_service SELECT on that table. BYPASSRLS skips
+    // RLS policies but NOT table-level privileges, so the export failed with
+    // 42501 - surfaced to the Proprietor as a confusing 403 even though the
+    // payroll:export permission check had passed.
+    await db.exec('set role samjona_service');
+    const { rows } = await db.query<{ n: string }>(
+      'select count(*) as n from bank_export_templates',
+    );
+
+    expect(rows, 'service role must be able to read bank export templates').toHaveLength(1);
+  });
 });

@@ -614,6 +614,12 @@ export async function exportPayrollRun(user: SessionUser, id: string): Promise<E
   assertPermission(user, 'payroll:export');
 
   return withServiceContext(async (tx) => {
+    // Attribute the PAYROLL_EXPORTED audit row to the user issuing the file.
+    // Without these the SECURITY DEFINER audit trigger sees no `app.user_id`
+    // and records the export as a system action.
+    await tx.query('select set_config($1, $2, true)', ['app.user_id', user.id]);
+    await tx.query('select set_config($1, $2, true)', ['app.user_role', user.role]);
+
     const run = await tx.query<RunExportRow>(
       `select r.id, r.run_code, r.status, r.currency_code, p.year, p.month
          from payroll_runs r

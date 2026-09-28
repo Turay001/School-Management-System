@@ -1,0 +1,42 @@
+-- ==========================================================================
+-- SAMJONA SMS - 019: Service role can read bank export templates
+-- ==========================================================================
+-- THE BUG THIS FIXES
+-- ------------------
+-- `exportPayrollRun` (src/server/portal/payroll.ts) builds the bank transfer
+-- file inside `withServiceContext`, which runs its statements as the
+-- `samjona_service` role. That role has the BYPASSRLS attribute, so it skips
+-- row-level security POLICIES - but BYPASSRLS does NOT grant table-level
+-- PRIVILEGES.
+--
+-- Migration 014 granted the service role SELECT/INSERT/UPDATE on the payroll
+-- tables but omitted `bank_export_templates`, so the export's read of the
+-- active template failed with PostgreSQL error 42501 (insufficient_privilege).
+-- The application's `mapDbError` translates 42501 into a 403 "Your role does
+-- not allow this action", which was deeply confusing: the authenticated user
+-- WAS the Proprietor and DID hold the `payroll:export` permission.
+--
+-- The live failure (demonstrated on the dashboard walkthrough):
+--
+--   GET /api/payroll/:id/export  -> 403 AUTH_FORBIDDEN after approval
+--
+-- while the very same run had just been approved successfully, because
+-- `payroll_runs` and `payroll_periods` ARE in 014's grant list.
+--
+-- This migration is the upgrade path for deployed databases. The canonical
+-- fix for fresh installs is in migration 014, which now includes
+-- `grant select on bank_export_templates to samjona_service;` alongside the
+-- existing DML grants.
+--
+-- WHY SELECT ONLY
+-- ---------------
+-- Templates are school-owned configuration edited through the Settings page
+-- under the application role (which has full DML from migration 012). The
+-- service role only ever reads the active template to build the file, so it
+-- gets the least privilege that makes export work.
+--
+-- GRANT is idempotent, so if this migration is ever re-applied against a
+-- database that already has 014's amended grants, it is harmless.
+-- ==========================================================================
+
+grant select on bank_export_templates to samjona_service;

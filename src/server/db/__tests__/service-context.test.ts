@@ -78,6 +78,13 @@ beforeAll(async () => {
       app_users, settings
     to test_service_group;
   `);
+
+  // The same read-only template grant migration 014 gives the real service
+  // role: the export path reads bank_export_templates under the service role
+  // and would otherwise fail with 42501 after a successful approval.
+  await db.exec(`
+    grant select on bank_export_templates to test_service_group;
+  `);
 }, 120_000);
 
 async function asExpectingFailure(
