@@ -56,7 +56,6 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Leave',
         access: ['leave:read_own', 'leave:approve'],
         icon: IconLeave,
-        placeholder: true,
       },
     ],
   },
