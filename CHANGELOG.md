@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          321 passed / 321, 17 files
+npm run test          326 passed / 326, 18 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green
 ```
@@ -52,6 +52,7 @@ npm run verify        green
 | `db/__tests__/rls.test.ts`                             | 10    |
 | `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
+| `db/__tests__/payroll-workflow.test.ts`                | 5     |
 
 Two checks sit outside `npm run verify`, and both are recorded here so the
 exclusion is deliberate rather than silent: `npm run build`, excluded since
@@ -956,3 +957,121 @@ Measured, not assumed (probed after migration 018 was applied):
   user-invitation flow), a second sign-in, and bank records for
   `EMP-0017`/`EMP-0016` added via the new profile-page button once a proprietor
   is logged in.
+
+---
+
+## Phase 8 — Live payroll happy-path walkthrough, and the real-Postgres-only bug it found
+
+The Phase 7 checklist is now closed for every step except the one that needs a
+credential: bank records exist, a run is generated and in review, and the
+segregation-of-duties check has been denied *live*. What is still missing is
+the second user's password, for the final approve + export.
+
+The walkthrough ran over the app's own HTTP routes against the running Next
+server, driving them with two signed-in users. Sign-in used the Supabase
+password grant; the session cookie was forged in `@supabase/ssr`'s exact format
+(`sb-<ref>-auth-token` = `base64-` + base64url of the user session object), so
+every request went through the real API routes, real middleware, real service
+layer and real database — nothing was simulated.
+
+### Exercised over the wire (all live, all measured)
+
+1. **Bank details for existing staff** (`POST /api/staff/[id]/bank`, the Phase 7
+   feature, as `obai.kamara`, USR-0008, `proprietor`):
+   - `EMP-0016` Turay → Rokel Commercial Bank, `5011000000123`
+   - `EMP-0017` Koroma → Sierra Leone Commercial Bank, `5012000000234`
+   - Two live `employee_bank_accounts` rows, primary + active, `created_by`
+     USR-0008, each with one audited `BANK_ACCOUNT_CHANGED` entry masking the
+     number to `****0123` / `****0234`.
+2. **Generate September 2026** (`POST /api/payroll`) → `PAY-2026-09-0001`,
+   revision 1. Two employees, `total_gross` 335000, `total_deductions` 25000,
+   `total_net` **310000**, `totals_reconcile` true, **0 items missing bank
+   details**; both `payroll_items` snapshot their bank account.
+3. **Send for review** (`POST /api/payroll/[id]/transition`, after the fix
+   below) → 200, status `under_review`, period header synced.
+4. **Self-approval as the generator** → **403 `AUTH_FORBIDDEN`**: "You
+   generated this payroll, so someone else must approve it. This separation of
+   duties protects the school and cannot be waived." The service-layer check
+   fires, and the `payroll_runs_segregation_of_duties` CHECK backs it up at the
+   database (a same-user approval fails there too, proven in the regression
+   test).
+5. **Audit trail** (live `audit_logs`): `PAYROLL_CREATED` → `PAYROLL_REVIEWED`
+   (metadata carries `total_net`, `employee_count`), all attributed to USR-0008.
+
+### Status: awaiting the second user's password
+
+Approve + export require a sign-in as the **other** user — `kynxjones@gmail.com`
+(USR-0007), the account whose password has never worked from a fresh grant. The
+account is healthy (last signed in 2026-09-28 12:07:45), so a valid password
+exists; the value tried earlier is stale or mistyped. The run sits at
+`under_review`, which is the intended awaiting-approval state — not corruption
+— and `docs/payroll-workflow.md` is worded exactly for this: one user generates
+and reviews, a different user approves.
+
+### The bug the walkthrough uncovered: 42P08 on the transition statement
+
+Step 3 initially returned **500**. The dev-server log carried the diagnosis:
+
+```
+[db] unmapped error {
+  correlationId: 'd3e7ad3d-…',
+  code: '42P08',
+  message: 'inconsistent types deduced for parameter $2',
+  detail: 'text versus payroll_run_status'
+}
+```
+
+The single `UPDATE` in `transitionPayrollRun` used `$2` in two roles at once —
+`status = $2` forces `payroll_run_status`, while `case when $2 = 'approved'`
+forces the literal-unknown resolution to `text`. Real PostgreSQL refuses to
+deduce one type for two contradictory uses.
+
+**Why the suite was green before this.** PGlite *is* the real Postgres engine
+compiled to WASM, and a probe proved it reproduces `42P08` for the uncast
+statement — the bug escaped because **no test ever executed that statement**.
+The portal services (`generatePayroll`, `transitionPayrollRun`,
+`updateStaffBank`) are bound to the runtime pools and had never run under test.
+Every prior payroll test covered the pure calculation engine, not the workflow.
+
+**The fix** (`src/server/portal/payroll.ts`): every CASE literal is now an
+explicit enum cast —
+
+```
+case when $2 = 'approved'::payroll_run_status then $4 else approved_by end
+```
+
+— and likewise `reopened` / `exported` / `archived`, so every use of `$2`
+agrees on `payroll_run_status`. No migration is needed; this is a code fix.
+The `payroll_periods` sync statement is untouched (its `$2` appears once).
+
+**Regression coverage** (`src/server/db/__tests__/payroll-workflow.test.ts`, 5
+tests, file added to _Current verified state_): because the portal layer cannot
+yet be pointed at the in-process PGlite, the test duplicates the exact
+transition statement (with a keep-in-sync comment citing `payroll.ts`) and runs
+it against the migrated schema under the production-shaped service roles. It
+contains:
+
+- a **canary** asserting the pre-fix uncast form raises `42P08` — the tripwire
+  if the statement ever regresses or PGlite loses the strictness;
+- `calculated → under_review`, asserting status, period sync, and the
+  `PAYROLL_REVIEWED` audit row with its actor;
+- `under_review → approved` by a *different* user, asserting `approved_by`,
+  `approved_at`, and the full audit sequence including `PAYROLL_APPROVED`;
+- **self-approval refused by the database** with `23514` (the segregation CHECK)
+  even though the SQL itself is well-typed, with the failed approval rolled
+  back;
+- `approved → exported`, exercising the third branch of the same statement.
+
+One test-harness detail worth recording: the deferred totals-check constraint
+trigger reads `payroll_items` at COMMIT, so the test's service group role needs
+`select/insert/update` on `payroll_items` too — skipping it fails with
+`permission denied for table payroll_items`, a fixture artefact, not a finding.
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        326 passed / 326, 18 files
+npm run verify      green
+```

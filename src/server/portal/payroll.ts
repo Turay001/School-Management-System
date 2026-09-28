@@ -584,11 +584,11 @@ export async function transitionPayrollRun(
       `update payroll_runs
           set status        = $2,
               notes         = coalesce($3, notes),
-              approved_by   = case when $2 = 'approved' then $4 else approved_by end,
-              approved_at   = case when $2 = 'approved' then now() else approved_at end,
-              reopen_reason = case when $2 = 'reopened' then $5 else reopen_reason end,
-              exported_at   = case when $2 = 'exported' then now() else exported_at end,
-              archived_at   = case when $2 = 'archived' then now() else archived_at end
+              approved_by   = case when $2 = 'approved'::payroll_run_status then $4 else approved_by end,
+              approved_at   = case when $2 = 'approved'::payroll_run_status then now() else approved_at end,
+              reopen_reason = case when $2 = 'reopened'::payroll_run_status then $5 else reopen_reason end,
+              exported_at   = case when $2 = 'exported'::payroll_run_status then now() else exported_at end,
+              archived_at   = case when $2 = 'archived'::payroll_run_status then now() else archived_at end
         where id = $1
         returning id, status, run_code`,
       [id, to, notes ?? null, user.id, reason?.trim() ?? null],
