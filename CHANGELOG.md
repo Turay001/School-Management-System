@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          364 passed / 364, 21 files
+npm run test          381 passed / 381, 22 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green (typecheck + lint + test + build)
 ```
@@ -42,8 +42,8 @@ npm run verify        green (typecheck + lint + test + build)
 | `lib/money.test.ts`                                    | 10    |
 | `lib/format.test.ts`                                   | 7     |
 | `repositories/postgres/__tests__/queryBuilder.test.ts` | 42    |
-| `auth/permissions.test.ts`                             | 18    |
-| `components/layout/__tests__/navigation.test.ts`       | 13    |
+| `auth/permissions.test.ts`                             | 20    |
+| `components/layout/__tests__/navigation.test.ts`       | 16    |
 | `db/__tests__/consistency.test.ts`                     | 16    |
 | `db/__tests__/roles.test.ts`                           | 14    |
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
@@ -56,6 +56,7 @@ npm run verify        green (typecheck + lint + test + build)
 | `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
 | `db/__tests__/payroll-workflow.test.ts`                | 5     |
+| `db/__tests__/student-detail-rls.test.ts`              | 12    |
 
 One check sits outside `npm run verify`, recorded here so the exclusion is
 deliberate rather than silent: `npm run format:check`, which as of Phase 7
@@ -1344,4 +1345,117 @@ npm run typecheck   exit 0
 npm run lint        exit 0
 npm run test        364 passed / 364, 21 files (navigation = 13, dashboard-rls = 8)
 npm run build       exit 0, /dashboard compiles as the role dispatcher
+```
+
+## Phase 11 — Teacher experience + the fee-data leak fix ("Phase 3", GATE 2 approved)
+
+Approved as "Phase 3" of the role-aware roadmap: the teacher journey now has a
+dedicated front door (**My Classes**, **My Subjects**) that feeds the existing
+My Students → Assessments → Enter Marks → Report Cards flow, and the critical
+data leak the journey exposed is closed **at the service boundary**, not by
+hiding UI.
+
+### The leak, and why it mattered
+
+`getStudentDetail()` gated its fee-balance read on the *student-read*
+permissions (`students:read`, `students:read_own_class`). That made financial
+sense for admin/principal/bursar rows, but a teacher also holds a student-read
+permission - `students:read_own_class` is the very permission that lets them
+see their own class. So a teacher calling `/api/students/[id]` (or the profile
+page) received the student's **fee balances, arrears state and payment-derived
+figures** for every student in their class. The ledger, payment history and
+arrears would not be *rendered* usefully, but they were in the response body,
+which is the same thing as having them.
+
+UI hiding would have been a paper over the crack: teachers would still receive
+the data. The fix had to make the response body itself clean.
+
+### The fix (service/API boundary, RLS unchanged as final backstop)
+
+- `getStudentDetail` now delegates the reads to a new exported seam
+  `loadStudentDetail(tx, user, id)`, which fetches `feeBalances` **only when
+  the caller holds `fees:read`** (Proprietor, Bursar, Principal). For every
+  other role the **query never runs** and the field is **absent from the
+  response** - not an empty array, because `[]` would still reveal the
+  financial fact "this student owes nothing".
+- The same permission check is what the matrix test locks down: financial
+  visibility follows `fees:read`, never the student-read permission. Note this
+  also removed `feeBalances` from **admin** responses - admin reads students
+  (`students:read`) but has no `fees:read`, so it was leaking to admin too.
+- RLS is untouched and stays the final backstop: `v_student_fee_balances` is
+  SECURITY INVOKER, so even a raw `SELECT` by a teacher returns zero rows
+  (proven by the RLS tests below).
+- `students/[id]/page.tsx` renders the fee card only when the service returned
+  the field (UI affordance follows the boundary; it is not the boundary).
+
+### Teacher journey additions
+
+- **`/my-classes`** - the signed-in teacher's classes (via the same
+  `getTeacherDashboardData` service the dashboard uses, scoped to
+  `classes.teacher_id`): student count, assessment count, pending-marks badge,
+  and one-click paths to My Students (`/students?classId=`), Assessments
+  (`/results?classId=`) and Report Cards (`/report-cards?classId=`).
+- **`/my-subjects`** - subjects the teacher actually teaches (from their own
+  assessments), each opening `/results?subjectId=`.
+- Both pages guard on `students:read_own_class` - the single teacher-exclusive
+  permission; **no new permissions were introduced**. Non-teachers get an honest
+  EmptyState. Both nav items sit in the Academics group gated on the same
+  permission, so only teachers (and the proprietor, who holds every
+  permission) see them in the sidebar.
+- Teacher dashboard: the My Classes section now links to `/my-classes` and My
+  Subjects to `/my-subjects`, so the journey starts from the landing page.
+- Assessment pending-marks attention items already live on the teacher
+  dashboard (Phase 10); no notifications work was needed. Attendance remains
+  disabled (`ENABLE_ATTENDANCE_MODULE=false`); no assessment submitted/locked
+  workflow was added.
+
+### Regression tests added (positive AND negative, direct-service and RLS)
+
+`db/__tests__/student-detail-rls.test.ts` (12 tests) runs the actual service
+seam against PGlite with the RLS GUC context set - a **direct service/API
+invocation**, not a browser-navigation test:
+
+- **Negative (teacher):** profile returned WITHOUT any fee field (`feeBalances`
+  absent, neither array nor figure); `"no balance"` not leaked (field absent
+  while the ledger genuinely holds 150,000); a student outside the teacher's
+  class raises `NotFoundError`; RLS shows zero rows on `v_student_fee_balances`,
+  `fee_payments` and `student_fee_assignments` for the teacher's **own** class
+  student; the register itself shows only own-class students.
+- **Positive:** proprietor sees the real 150,000 balance with arrears state
+  (200,000 assigned − 50,000 paid); principal and bursar keep their existing
+  financial visibility; the SECURITY INVOKER view returns the same figure to a
+  raw proprietor query. Admin receives no fee data (matrix-consistent).
+- `auth/permissions.test.ts` (+2): `fees:read` is held only by
+  proprietor/bursar/principal; student-academic and student-financial access
+  stay separate (admin reads all students yet has no `fees:read`; the teacher
+  scope permission is teacher-exclusive).
+- `navigation.test.ts` (+3): teachers see both teacher hubs; admin/principal/
+  bursar do not; the proprietor does (every permission); section labels resolve
+  only for roles that are offered the page.
+
+### Files created
+
+- `src/app/(app)/my-classes/page.tsx`, `src/app/(app)/my-subjects/page.tsx`
+- `src/server/db/__tests__/student-detail-rls.test.ts` (12 tests)
+
+### Files modified
+
+- `src/server/portal/students.ts` - `loadStudentDetail` seam; fee gate on
+  `fees:read`; `StudentDetail.feeBalances` now optional
+- `src/app/(app)/students/[id]/page.tsx` - fee card only when the boundary
+  returned it
+- `src/components/layout/navigation.tsx` - Academics group adds My Classes /
+  My Subjects (gated on `students:read_own_class`)
+- `src/components/dashboard/teacher-dashboard.tsx` - journey links to the new
+  hubs
+- `src/server/auth/permissions.test.ts`, `src/components/layout/__tests__/navigation.test.ts`
+- `CHANGELOG.md` (this section), `docs/architecture.md` (financial boundary note)
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        381 passed / 381, 22 files (student-detail-rls = 12)
+npm run build       exit 0, /my-classes and /my-subjects compile
 ```

@@ -99,6 +99,23 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Academics',
     items: [
+      // The two teacher-hub destinations are gated on `students:read_own_class`,
+      // the single teacher-exclusive permission in the matrix: it exists for
+      // exactly this "my class" scope. No new permission was introduced for
+      // them (Phase 3 discipline). The routes themselves guard on the same
+      // permission and refuse every other role.
+      {
+        href: '/my-classes',
+        label: 'My Classes',
+        access: ['students:read_own_class'],
+        icon: IconStudent,
+      },
+      {
+        href: '/my-subjects',
+        label: 'My Subjects',
+        access: ['students:read_own_class'],
+        icon: IconSubjects,
+      },
       { href: '/results', label: 'Results', access: ['results:read'], icon: IconResults },
       {
         href: '/report-cards',

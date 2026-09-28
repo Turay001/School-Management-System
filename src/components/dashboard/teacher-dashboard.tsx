@@ -86,8 +86,8 @@ export default async function TeacherDashboard({ user }: { user: AuthenticatedUs
             </p>
           </div>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/students">
-              View All My Students
+            <Link href="/my-classes">
+              View All My Classes
               <IconArrowRight />
             </Link>
           </Button>
@@ -200,11 +200,19 @@ function MySubjectsSection({
 
   return (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold tracking-tight">My Subjects</h2>
-        <p className="text-sm text-muted-foreground">
-          The subjects you teach, from your recorded assessments this year.
-        </p>
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">My Subjects</h2>
+          <p className="text-sm text-muted-foreground">
+            The subjects you teach, from your recorded assessments this year.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/my-subjects">
+            Browse My Subjects
+            <IconArrowRight />
+          </Link>
+        </Button>
       </div>
       {data.subjects.length === 0 ? (
         <p className="text-sm text-muted-foreground">

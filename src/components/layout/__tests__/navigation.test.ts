@@ -56,6 +56,8 @@ describe('navGroupsFor - teacher affordances', () => {
       'Staff', // their own record only (employees:read_own, RLS-scoped)
       'Students',
       'Leave',
+      'My Classes',
+      'My Subjects',
       'Results',
       'Report Cards',
       'Notifications',
@@ -68,6 +70,31 @@ describe('navGroupsFor - teacher affordances', () => {
     const labels = labelsFor(userFor('teacher'));
     for (const hidden of ['Payroll', 'Fees', 'Expenses', 'Reports', 'Settings', 'Subjects']) {
       expect(labels).not.toContain(hidden);
+    }
+  });
+});
+
+describe('navGroupsFor - the teacher hubs are teacher-scoped destinations', () => {
+  it('shows My Classes and My Subjects to teachers', () => {
+    for (const label of ['My Classes', 'My Subjects']) {
+      expect(labelsFor(userFor('teacher'))).toContain(label);
+    }
+  });
+
+  it('hides the teacher hubs from admin, principal and bursar (no class-teaching scope)', () => {
+    for (const role of ['admin', 'principal', 'bursar'] as const) {
+      for (const label of ['My Classes', 'My Subjects']) {
+        expect(labelsFor(userFor(role)), `${role} must not see ${label}`).not.toContain(label);
+      }
+    }
+  });
+
+  it('shows them to the proprietor, who holds every permission including the teacher scope', () => {
+    // proprietor: ALL permissions, `students:read_own_class` included. The
+    // route itself still refuses non-teachers, so this is affordance parity,
+    // not expanded access.
+    for (const label of ['My Classes', 'My Subjects']) {
+      expect(labelsFor(userFor('proprietor'))).toContain(label);
     }
   });
 });
@@ -148,6 +175,8 @@ describe('navGroupsFor - admin and proprietor affordances', () => {
       'Payroll',
       'Fees',
       'Expenses',
+      'My Classes',
+      'My Subjects',
       'Results',
       'Report Cards',
       'Subjects',
@@ -181,6 +210,8 @@ describe('sectionLabelForPathname', () => {
     expect(sectionLabelForPathname(teacher, '/results/123')).toBe('Results');
     expect(sectionLabelForPathname(teacher, '/students')).toBe('Students');
     expect(sectionLabelForPathname(teacher, '/staff/abc')).toBe('Staff');
+    expect(sectionLabelForPathname(teacher, '/my-classes')).toBe('My Classes');
+    expect(sectionLabelForPathname(teacher, '/my-subjects')).toBe('My Subjects');
   });
 
   it('does not label a path whose section is hidden from the role', () => {
@@ -188,5 +219,8 @@ describe('sectionLabelForPathname', () => {
     expect(sectionLabelForPathname(teacher, '/payroll')).toBeNull();
     expect(sectionLabelForPathname(teacher, '/fees')).toBeNull();
     expect(sectionLabelForPathname(teacher, '/settings')).toBeNull();
+    // The teacher hubs are teacher-scoped: a principal is not offered them.
+    expect(sectionLabelForPathname(userFor('principal'), '/my-classes')).toBeNull();
+    expect(sectionLabelForPathname(userFor('principal'), '/my-subjects')).toBeNull();
   });
 });

@@ -16,10 +16,12 @@ import { StatusControl } from '@/components/students/status-control';
 /**
  * STUDENT PROFILE
  * ===============
- * The complete record for one student: identity, class, guardians and a
- * recent view of fee balances derived from the fee ledger. Guardians are
- * explicit rows so a fee payment or emergency contact always reaches a real
- * person.
+ * The record for one student: identity, class, guardians and - for roles with
+ * `fees:read` only - a recent view of fee balances derived from the fee
+ * ledger. The service omits financial fields entirely for roles without the
+ * financial permission, so a teacher's profile is academic and contact
+ * information only. Guardians are explicit rows so a fee payment or emergency
+ * contact always reaches a real person.
  */
 export default async function StudentProfilePage({
   params,
@@ -54,7 +56,11 @@ export default async function StudentProfilePage({
     throw err;
   }
 
-  const activeBalances = detail.feeBalances.filter((row) => row.isInArrears);
+  const feeBalances = detail.feeBalances;
+  // Absent when the signed-in role has no `fees:read`. The service omits the
+  // field entirely for such roles (teachers included) - it never even queries
+  // the ledger - and the UI follows: no banner, no figures, no card.
+  const activeBalances = (feeBalances ?? []).filter((row) => row.isInArrears);
 
   return (
     <div className="space-y-6">
@@ -173,59 +179,64 @@ export default async function StudentProfilePage({
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Fee balances</CardTitle>
-          <CardDescription>
-            The most recent terms, derived from the fee ledger (assignments − payments +
-            adjustments). Never a stored number.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {detail.feeBalances.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No fee activity yet for this student.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs text-muted-foreground">
-                    <th className="pb-2 pr-4 font-medium">Academic year</th>
-                    <th className="pb-2 pr-4 font-medium">Term</th>
-                    <th className="pb-2 pr-4 text-right font-medium">Balance</th>
-                    <th className="pb-2 font-medium">Position</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.feeBalances.map((row, index) => (
-                    <tr key={`${row.academicYear}-${row.term}`} className="border-b last:border-0">
-                      <td className="py-2 pr-4 tabular-nums">{row.academicYear}</td>
-                      <td className="py-2 pr-4">{row.term}</td>
-                      <td className="py-2 pr-4 text-right tabular-nums">
-                        {formatMoney(row.balance)}
-                      </td>
-                      <td className="py-2">
-                        {row.balance < 0 ? (
-                          <span className="text-xs font-medium text-emerald-600">
-                            In credit
-                          </span>
-                        ) : row.balance === 0 ? (
-                          <span className="text-xs text-muted-foreground">Settled</span>
-                        ) : (
-                          <span className="text-xs font-medium text-destructive">
-                            Arrears — {index === 0 ? 'current term' : 'earlier term'}
-                          </span>
-                        )}
-                      </td>
+      {feeBalances ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Fee balances</CardTitle>
+            <CardDescription>
+              The most recent terms, derived from the fee ledger (assignments − payments +
+              adjustments). Never a stored number.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {feeBalances.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No fee activity yet for this student.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="pb-2 pr-4 font-medium">Academic year</th>
+                      <th className="pb-2 pr-4 font-medium">Term</th>
+                      <th className="pb-2 pr-4 text-right font-medium">Balance</th>
+                      <th className="pb-2 font-medium">Position</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </thead>
+                  <tbody>
+                    {feeBalances.map((row, index) => (
+                      <tr
+                        key={`${row.academicYear}-${row.term}`}
+                        className="border-b last:border-0"
+                      >
+                        <td className="py-2 pr-4 tabular-nums">{row.academicYear}</td>
+                        <td className="py-2 pr-4">{row.term}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums">
+                          {formatMoney(row.balance)}
+                        </td>
+                        <td className="py-2">
+                          {row.balance < 0 ? (
+                            <span className="text-xs font-medium text-emerald-600">
+                              In credit
+                            </span>
+                          ) : row.balance === 0 ? (
+                            <span className="text-xs text-muted-foreground">Settled</span>
+                          ) : (
+                            <span className="text-xs font-medium text-destructive">
+                              Arrears — {index === 0 ? 'current term' : 'earlier term'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

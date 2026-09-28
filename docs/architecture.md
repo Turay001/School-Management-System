@@ -155,6 +155,32 @@ from deployment config) hide a module's entry without touching the permission
 matrix, and hiding a link is affordance - the route handler and RLS still
 forbid misuse.
 
+The teacher journey is completed by two dedicated hubs (Phase 11): **My
+Classes** (`/my-classes`) and **My Subjects** (`/my-subjects`), both gated in
+the nav and at the route on `students:read_own_class` - the single
+teacher-exclusive permission; no new permissions were introduced. They feed the
+existing My Students (`/students`), Assessments (`/results`), marks entry
+(`/results/[id]`) and Report Cards (`/report-cards`) flow. Assessment marks
+still awaiting entry are the teacher's attention list.
+
+## Student profiles and the fee-data boundary
+
+Student detail is the one academic read that could leak finance, so its shape
+is deliberate:
+
+- `getStudentDetail` returns profile + guardians for every student-read role,
+  teachers included (scoped by `students` RLS to their own class).
+- **Fee balances are returned only to roles with `fees:read`** (Proprietor,
+  Bursar, Principal). The decision keys on the *financial* permission, never
+  the student-read permission: a teacher holds `students:read_own_class` yet
+  must never receive a balance, arrears state or payment-derived figure. For
+  every other role the ledger view is **not queried at all** and the
+  `feeBalances` field is **absent** from the response (absent, not `[]` - an
+  empty list would still reveal "owes nothing").
+- The service seam (`loadStudentDetail`) is exported so tests invoke it
+  directly under the RLS GUC context; RLS stays the final backstop via the
+  SECURITY INVOKER views over the fee ledger.
+
 ## Academics: subjects, assessments and results
 
 Teachers record student marks into named assessments (CSV upload or a manual

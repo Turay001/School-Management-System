@@ -79,6 +79,37 @@ describe('separation of duties', () => {
     }
   });
 
+  it('keeps student financial visibility on the fees:read roles only (Phase 3)', () => {
+    // getStudentDetail returns fee balances only when the caller holds
+    // fees:read. This matrix is the single source of truth that decision
+    // keys off: financial data follows the FINANCIAL permission, never the
+    // student-read permission. Principal keeps what it already had; teacher
+    // and admin (who can read students) do not gain fee data.
+    const holders = ['proprietor', 'bursar', 'principal'] as const;
+    for (const role of holders) {
+      expect(roleHasPermission(role, 'fees:read'), `${role} must hold fees:read`).toBe(true);
+    }
+    for (const role of ROLES.filter((r) => !(holders as readonly string[]).includes(r))) {
+      expect(roleHasPermission(role, 'fees:read'), `${role} must not hold fees:read`).toBe(false);
+    }
+  });
+
+  it('keeps student-academic access and student-financial access separate', () => {
+    // Every role that can read students does NOT automatically see finances:
+    // admin reads all students (students:read) yet has no fees:read, and the
+    // teacher reads own-class students (students:read_own_class) yet has no
+    // fees:read.
+    expect(roleHasPermission('admin', 'students:read')).toBe(true);
+    expect(roleHasPermission('admin', 'fees:read')).toBe(false);
+    expect(roleHasPermission('teacher', 'students:read_own_class')).toBe(true);
+    expect(roleHasPermission('teacher', 'fees:read')).toBe(false);
+    // And the teacher-only scope permission is exclusive to the teacher role
+    // among the non-proprietor roles.
+    for (const role of ['admin', 'bursar', 'principal'] as const) {
+      expect(roleHasPermission(role, 'students:read_own_class')).toBe(false);
+    }
+  });
+
   it('prevents a Teacher from seeing other staff', () => {
     expect(roleHasPermission('teacher', 'employees:read')).toBe(false);
     expect(roleHasPermission('teacher', 'employees:read_own')).toBe(true);

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { z } from 'zod';
 
-import { assertPermission, canAny, type SessionUser } from '../auth/permissions';
+import { assertPermission, can, canAny, type SessionUser } from '../auth/permissions';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
 import type { Guardian, Student, StudentStatus } from '../db/types';
@@ -50,7 +50,15 @@ export interface StudentDetail extends Omit<Student, 'createdBy' | 'updatedAt'> 
   guardians: Guardian[];
   classCode: string | null;
   className: string | null;
-  feeBalances: StudentFeeBalanceRow[];
+  /**
+   * Recent term balances derived from the fee ledger. ONLY present when the
+   * caller has `fees:read` (Proprietor, Bursar, Principal). For every other
+   * role the key is absent entirely - the ledger is not even queried - so a
+   * teacher's student record can never contain a fee figure, a balance, or
+   * "in arrears" state. Absent is different from `[]`: an empty list would
+   * still reveal that a student has no balance.
+   */
+  feeBalances?: StudentFeeBalanceRow[];
 }
 
 export interface StudentFeeBalanceRow {
@@ -275,13 +283,69 @@ export async function getStudentDetail(user: SessionUser, id: string): Promise<S
     throw new ForbiddenError('Your role does not allow viewing student records.');
   }
 
-  return withUserContext(user, async (tx) => {
-    // Sequential reads: exactly one in-flight query per client.
-    const student = await findStudent(tx, id);
-    if (!student) throw new NotFoundError('Student', id);
+  return withUserContext(user, (tx) => loadStudentDetail(tx, user, id));
+}
 
-    const guardians = await tx.query<GuardianRow>(`select * from guardians where student_id = $1 order by is_primary desc, full_name`, [id]);
+/**
+ * The transaction-bound reads behind `getStudentDetail`, exported so the
+ * service boundary is testable against a real PostgreSQL engine (PGlite) with
+ * the RLS GUC context set - proving that a teacher's detail record contains no
+ * fee data even when the service is called directly, not only via the UI.
+ *
+ * THE FINANCIAL BOUNDARY LIVES HERE. `feeBalances` is fetched from the fee
+ * ledger ONLY when the caller holds `fees:read`. Teachers (and any role
+ * without the financial permission) not only lose the field - the
+ * `v_student_fee_balances` view is never queried for them at all. RLS remains
+ * the final backstop: the view is SECURITY INVOKER, so even a raw query
+ * returns nothing to a role the ledger does not admit.
+ *
+ * `user` is used for the fee-gate decision only. Row visibility comes from the
+ * GUC-context RLS attached to `tx` by the caller.
+ */
+export async function loadStudentDetail(
+  tx: Queryable,
+  user: SessionUser,
+  id: string,
+): Promise<StudentDetail> {
+  // Sequential reads: exactly one in-flight query per client.
+  const student = await findStudent(tx, id);
+  if (!student) throw new NotFoundError('Student', id);
 
+  const guardians = await tx.query<GuardianRow>(
+    `select * from guardians where student_id = $1 order by is_primary desc, full_name`,
+    [id],
+  );
+
+  const detail: StudentDetail = {
+    id: student.id,
+    studentCode: student.student_code,
+    fullName: student.full_name,
+    gender: student.gender as Student['gender'],
+    dateOfBirth: student.date_of_birth,
+    admissionDate: student.admission_date,
+    classId: student.class_id,
+    notes: student.notes,
+    status: student.status as StudentStatus,
+    createdAt: student.created_at,
+    classCode: student.class_code,
+    className: student.class_name,
+    guardians: guardians.rows.map((row) => ({
+      id: row.id,
+      studentId: row.student_id,
+      fullName: row.full_name,
+      phone: row.phone,
+      email: row.email,
+      relationship: row.relationship,
+      isPrimary: row.is_primary,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+  };
+
+  // Gate the ledger read on the FINANCIAL permission, never the student-read
+  // permission. A teacher reads students via `students:read_own_class` and
+  // must still never see a balance.
+  if (can(user, 'fees:read')) {
     const feeBalances = await tx.query<FeeBalanceRow>(
       `select ay.name as academic_year, t.name as term, b.balance, b.is_in_arrears
          from v_student_fee_balances b
@@ -292,39 +356,15 @@ export async function getStudentDetail(user: SessionUser, id: string): Promise<S
         limit 5`,
       [id],
     );
+    detail.feeBalances = feeBalances.rows.map((row) => ({
+      academicYear: row.academic_year,
+      term: row.term,
+      balance: row.balance,
+      isInArrears: row.is_in_arrears,
+    }));
+  }
 
-    return {
-      id: student.id,
-      studentCode: student.student_code,
-      fullName: student.full_name,
-      gender: student.gender as Student['gender'],
-      dateOfBirth: student.date_of_birth,
-      admissionDate: student.admission_date,
-      classId: student.class_id,
-      notes: student.notes,
-      status: student.status as StudentStatus,
-      createdAt: student.created_at,
-      classCode: student.class_code,
-      className: student.class_name,
-      guardians: guardians.rows.map((row) => ({
-        id: row.id,
-        studentId: row.student_id,
-        fullName: row.full_name,
-        phone: row.phone,
-        email: row.email,
-        relationship: row.relationship,
-        isPrimary: row.is_primary,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })),
-      feeBalances: feeBalances.rows.map((row) => ({
-        academicYear: row.academic_year,
-        term: row.term,
-        balance: row.balance,
-        isInArrears: row.is_in_arrears,
-      })),
-    };
-  });
+  return detail;
 }
 
 export async function listClasses(user: SessionUser): Promise<{ id: string; name: string }[]> {
