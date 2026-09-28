@@ -74,11 +74,10 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: '/notifications',
         label: 'Notifications',
-        // Visible to everyone with an account - the item can never be hidden
+        // Visible to everyone with staff records - the item can never be hidden
         // behind an empty permission list (an empty list matches no one).
         access: ['employees:read'],
         icon: IconBell,
-        placeholder: true,
       },
       {
         href: '/settings',
