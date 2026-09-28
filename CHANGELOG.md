@@ -945,12 +945,14 @@ Measured, not assumed (probed after migration 018 was applied):
   are `active` with a live salary row but **no live bank row** — the exact gap
   this phase closed, now recordable through the staff profile page.
 - Auth users: `kynxjones@gmail.com` (proprietor, `USR-0007`, active) and the
-  second auth user `obaiikamara67@gmail.com` (`9f2c3558-…`), who has **no
-  `app_users` profile and therefore no role** — so it cannot yet act as the
-  separate payroll approver (`payroll:approve` is held by `proprietor` only).
+  second auth user `obaiikamara67@gmail.com` (`9f2c3558-…`). An `app_users`
+  profile for the second user is created with `npm run db:seed-first-user`
+  (`USR-0008` obai.kamara / Obai I. Kamara, role `proprietor`, verified to
+  resolve through RLS), so it can act as the separate payroll approver
+  (`payroll:approve` is held by `proprietor` only).
 - The live payroll happy path (generate → review → approve → export) therefore
-  still needs, in order: an `app_users` row with the `proprietor` role for the
-  second user, that user's login password (the app has no user-creation path by
-  design — the credential comes from the Supabase user-invitation flow), and
-  bank records for `EMP-0017`/`EMP-0016` added via the new profile-page button
-  once a proprietor is logged in.
+  still needs, in order: that user's login password (the app has no
+  user-creation path by design — the credential comes from the Supabase
+  user-invitation flow), a second sign-in, and bank records for
+  `EMP-0017`/`EMP-0016` added via the new profile-page button once a proprietor
+  is logged in.
