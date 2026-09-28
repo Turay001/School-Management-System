@@ -203,6 +203,25 @@ describe('navGroupsFor - My Profile (Phase 4 self-service front door)', () => {
   });
 });
 
+describe('navGroupsFor - Phase 5 dashboard module affordances', () => {
+  it('offers the principal every module its dashboard links to', () => {
+    const labels = labelsFor(userFor('principal'));
+    for (const label of ['Students', 'Results', 'Report Cards', 'Reports', 'Fees', 'Payroll', 'Expenses']) {
+      expect(labels, `principal must be offered ${label}`).toContain(label);
+    }
+  });
+
+  it('offers the bursar every module its dashboard links to and no academics', () => {
+    const labels = labelsFor(userFor('bursar'));
+    for (const label of ['Fees', 'Payroll', 'Expenses', 'Reports']) {
+      expect(labels, `bursar must be offered ${label}`).toContain(label);
+    }
+    for (const label of ['Results', 'Report Cards', 'Subjects', 'My Classes', 'My Subjects']) {
+      expect(labels, `bursar must NOT be offered ${label}`).not.toContain(label);
+    }
+  });
+});
+
 describe('navGroupsFor - leave feature flag', () => {
   it('hides the leave module for everyone when the flag is off', () => {
     for (const role of ALL_ROLES) {

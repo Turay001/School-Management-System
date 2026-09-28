@@ -141,13 +141,47 @@ serve, and the reads run inside `withUserContext` like every other page.
   `classes` *catalog* is deliberately school-wide reference data (migration
   `012` `classes_select` grants all five roles), so the teacher-landing filter
   is explicit in the service while student/assessment/mark scope is RLS.
-- **Principal** gets a school-wide academic overview plus the same
-  permission-driven attention list. Financial figures appear only where the
-  matrix already grants them (`fees:read`, `payroll:read`, `expenses:read`);
-  this landing does not expand them.
-- **Bursar** gets a financial landing - arrears from `v_student_fee_balances`,
-  payments recorded today from `fee_payments`, payroll and expenses awaiting
-  review - and, by design, no academics.
+- **Principal** gets a school-wide **academic oversight** landing (Phase 5,
+  changelog 13): active students/classes/class-teachers/subjects/assessments, a
+  marks-completion figure (report cards are derived from marks, so
+  "report-card readiness" IS completion — no invented second metric), the
+  classes still awaiting marks, and a compact financial strip rendered only
+  where `fees:read`, `expenses:read` or `payroll:read` already exist. The
+  staff/leave cards render only for the permissions that admit them
+  (`employees:read`, `leave:read_own`) and come from the same permission-gated
+  seam; attendance is omitted because the module is not enabled. The strip
+  reuses `getDashboardData` — no second aggregation.
+- **Bursar** gets a **financial-operations** landing (Phase 5, changelog 13):
+  arrears from `v_student_fee_balances`, payments recorded today and receipts
+  this month, a recent-payments activity strip, expenses awaiting review via
+  the Expenses module's own `listExpenses` service, and the same payroll-review
+  card the Admin dashboard renders. It reads no academic tables at all — the
+  matrix gives the bursar no results permissions.
+- **Proprietor and admin** keep the school-wide operations dashboard
+  (staff, payroll, arrears, expenses, attention), unchanged.
+
+The phase gate asked for an audit of the schema versus the assumed role×domain
+matrix before building. Three differences were found, **reported and preserved**
+rather than changed — the established contract wins:
+
+1. **Admin vs the fee ledger.** Raw RLS on `fee_payments` /
+   `fee_adjustments` / `student_fee_assignments` / `v_student_fee_balances`
+   admits the admin role, but admin holds no `fees:read`, so every fee service
+   denies admin. The service layer is the contract the app enforces; the raw-RLS
+   reality is locked by test, not papered over.
+2. **Bursar vs the class catalog.** `classes_select` admits the bursar, but the
+   bursar has zero academic permissions and no service exposes academic reads.
+3. **Principal vs leave.** RLS admits the principal to all leave rows, but the
+   permission matrix grants only `leave:read_own` (view, never approve).
+
+Dashboard data flows through exported transaction-bound seams
+(`loadPrincipalDashboardData(tx, user)`, `loadBursarDashboardData(tx)`) exactly
+like the Phase 11/12 seams, so tests invoke the real service under the RLS GUC
+context; the public getters guard role + permission *before* opening a
+connection, and the seams stay RLS-bounded for defense in depth. Query economy:
+the principal page issues ~9 statement batches and the bursar ~10, most of which
+are the shared attention aggregation — the dashboards reuse rather than
+re-derive, and every read runs inside the caller's RLS context (no caching).
 
 The sidebar follows the same rules as the routes: Dashboard is shown to any
 authenticated user (`always`), module feature flags (`NavOptions.leaveEnabled`,

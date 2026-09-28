@@ -180,6 +180,92 @@ describe('employee self-service boundaries (Phase 4)', () => {
   });
 });
 
+describe('role dashboards (Phase 5): academic oversight and financial operations are separate dimensions', () => {
+  it('gives the principal academic oversight plus the FINANCIAL READS already granted, never more', () => {
+    // The Principal dashboard is an academic-oversight landing. Its financial
+    // strip renders only where the matrix already puts a read (fees:read,
+    // expenses:read, payroll:read) - the landing never gains a financial
+    // WRITE because the role is senior.
+    for (const permission of [
+      'results:read',
+      'reportcards:read',
+      'subjects:read',
+      'fees:read',
+      'expenses:read',
+      'payroll:read',
+      'payroll:export',
+      'employees:read',
+      'leave:read_own',
+      'attendance:read',
+      'audit:read',
+    ] as const) {
+      expect(roleHasPermission('principal', permission), `principal must hold ${permission}`).toBe(true);
+    }
+    for (const permission of [
+      'results:record',
+      'subjects:manage',
+      'fees:record',
+      'fees:adjust',
+      'expenses:write',
+      'payroll:generate',
+      'payroll:review',
+      'payroll:approve',
+      'employees:bank',
+      'leave:approve',
+    ] as const) {
+      expect(roleHasPermission('principal', permission), `principal must NOT hold ${permission}`).toBe(false);
+    }
+  });
+
+  it('gives the bursar a financial-operations license and NO academic license', () => {
+    for (const permission of [
+      'fees:read',
+      'fees:record',
+      'expenses:read',
+      'expenses:write',
+      'payroll:read',
+      'payroll:generate',
+      'payroll:review',
+      'payroll:export',
+      'students:read',
+      'employees:read',
+      'employees:bank',
+      'reports:read',
+      'reports:financial',
+    ] as const) {
+      expect(roleHasPermission('bursar', permission), `bursar must hold ${permission}`).toBe(true);
+    }
+    for (const permission of [
+      'results:read',
+      'results:record',
+      'reportcards:read',
+      'subjects:read',
+      'subjects:manage',
+      'attendance:read',
+      'attendance:write',
+      'leave:approve',
+      'expenses:approve',
+      'payroll:approve',
+      'audit:read',
+    ] as const) {
+      expect(roleHasPermission('bursar', permission), `bursar must NOT hold ${permission}`).toBe(false);
+    }
+  });
+
+  it('keeps admin and teacher financially one-sided exactly as before (no Phase 5 widening)', () => {
+    // Nothing about Phase 5 changes the admin or teacher writ: admin still
+    // reaches finance only through expenses:read/write, teacher still through
+    // none at all.
+    for (const role of ['admin', 'teacher'] as const) {
+      expect(roleHasPermission(role, 'fees:record')).toBe(false);
+      expect(roleHasPermission(role, 'fees:adjust')).toBe(false);
+      expect(roleHasPermission(role, 'payroll:approve')).toBe(false);
+    }
+    expect(roleHasPermission('admin', 'fees:read')).toBe(false);
+    expect(roleHasPermission('admin', 'payroll:read')).toBe(false);
+  });
+});
+
 describe('guards throw rather than returning a boolean', () => {
   it('throws when an anonymous user requests a permission', () => {
     expect(() => assertPermission(null, 'employees:read')).toThrow(ForbiddenError);

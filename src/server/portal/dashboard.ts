@@ -224,56 +224,215 @@ export async function getTeacherDashboardData(
   });
 }
 
-export interface PrincipalDashboardData {
+export interface PrincipalOverview {
   activeStudents: number;
   activeClasses: number;
+  /**
+   * Distinct teachers assigned to ACTIVE classes in the CURRENT academic year
+   * (classes.teacher_id). The class catalog is school-wide reference data
+   * (migration 012 classes_select), so this counts assignment rows a role may
+   * already read - it never touches student or mark rows.
+   */
+  activeTeachers: number;
   activeSubjects: number;
   assessmentsThisYear: number;
-  resultsThisYear: number;
+  /** Marks recorded this school year (RLS-scoped). */
+  recordedResults: number;
+  /** Sum over current-year assessments of each class's active student count. */
+  expectedResults: number;
+  /** Current-year assessments whose recorded marks are below class size. */
+  pendingAssessments: number;
+  /** Active staff headcount; null when the caller lacks employees:read. */
+  activeStaff: number | null;
+  /** Pending leave requests; null when the caller lacks a leave-read permission. */
+  pendingLeaveRequests: number | null;
+}
+
+export interface PrincipalClassAttention {
+  classId: string;
+  className: string;
+  pendingAssessments: number;
+  /** Recorded / expected marks for the class, as an integer percent. */
+  completionPercent: number;
+}
+
+export interface PrincipalDashboardData {
+  overview: PrincipalOverview;
+  /** Classes with unfinished current-year assessments, most-pending first. */
+  academicAttention: PrincipalClassAttention[];
 }
 
 /**
- * The principal's landing: a school-wide ACADEMIC overview. Financial access
- * stays exactly where the permission matrix puts it (fees:read, payroll:read,
- * expenses:read) - nothing here expands it.
+ * PRINCIPAL'S LANDING - Phase 5.
+ *
+ * A school-wide ACADEMIC oversight dashboard: population, teaching staff,
+ * subjects, assessment activity, marks completion and report-card readiness
+ * (report cards are derived from marks, so readiness IS completion) plus a
+ * class-level attention list. Staff/leave figures appear only where the
+ * caller's permissions admit them (employees:read, leave:*), and financial
+ * figures are intentionally NOT computed here - getDashboardData already
+ * produces every number the compact financial strip needs from the SAME
+ * permission gates, so this service does not duplicate it.
+ *
+ * `loadPrincipalDashboardData` is the exported transaction-bound seam used by
+ * the getter and by direct service tests; RLS bounds every row it reads, so a
+ * mis-routed call from another role can never conjure a school-wide figure.
+ */
+export async function loadPrincipalDashboardData(
+  tx: Queryable,
+  user: SessionUser,
+): Promise<PrincipalDashboardData> {
+  const { rows } = await tx.query<{
+    active_students: number;
+    active_classes: number;
+    active_teachers: number;
+    active_subjects: number;
+    assessments_this_year: number;
+    recorded_results: number;
+    expected_results: number;
+    pending_assessments: number;
+  }>(
+    `select
+       (select count(*)::int from students where status = 'active') as active_students,
+       (select count(*)::int from classes where status = 'active') as active_classes,
+       (select count(distinct c.teacher_id)::int
+          from classes c
+          join academic_years ay on ay.id = c.academic_year_id
+         where c.status = 'active' and ay.is_current and c.teacher_id is not null)
+         as active_teachers,
+       (select count(*)::int from subjects where status = 'active') as active_subjects,
+       (select count(*)::int from assessments a
+          join terms t on t.id = a.term_id
+          join academic_years ay on ay.id = t.academic_year_id
+         where ay.is_current) as assessments_this_year,
+       (select count(*)::int from student_results r
+          join assessments a on a.id = r.assessment_id
+          join terms t on t.id = a.term_id
+          join academic_years ay on ay.id = t.academic_year_id
+         where ay.is_current) as recorded_results,
+       (select coalesce(sum(
+          (select count(*)::int from students s where s.class_id = a.class_id and s.status = 'active')
+        ), 0)::int
+          from assessments a
+          join terms t on t.id = a.term_id
+          join academic_years ay on ay.id = t.academic_year_id
+         where ay.is_current) as expected_results,
+       (select count(*)::int from assessments a
+          join terms t on t.id = a.term_id
+          join academic_years ay on ay.id = t.academic_year_id
+         where ay.is_current
+           and (select count(*)::int from student_results r where r.assessment_id = a.id)
+               < (select count(*)::int from students s where s.class_id = a.class_id and s.status = 'active'))
+         as pending_assessments`,
+  );
+  const row = rows[0];
+
+  // Staff and leave are separate authorization dimensions: only admitted to
+  // the roles that hold the matching permission. `null` means "not admitted",
+  // never zero - the UI renders the card as absent.
+  const staffGated = can(user, 'employees:read');
+  const leaveGated = canAny(user, ['leave:read_own', 'leave:approve']);
+  let activeStaff: number | null = null;
+  let pendingLeaveRequests: number | null = null;
+  if (staffGated || leaveGated) {
+    const staffRows = await tx.query<{ active_staff: number; pending_leave: number }>(
+      `select
+         (select count(*)::int from employees where status = 'active') as active_staff,
+         (select count(*)::int from leave_requests where status = 'pending') as pending_leave`,
+    );
+    const s = staffRows.rows[0];
+    activeStaff = staffGated ? (s?.active_staff ?? 0) : null;
+    // RLS keeps this row count scoped to what the caller may see (a teacher
+    // calling the seam would count only their own pending requests here).
+    pendingLeaveRequests = leaveGated ? (s?.pending_leave ?? 0) : null;
+  }
+
+  const attentionRows = await tx.query<{
+    class_id: string;
+    class_name: string;
+    pending_assessments: number;
+    recorded_results: number;
+    expected_results: number;
+  }>(
+    `select c.id as class_id, c.name as class_name,
+            (select count(*)::int from assessments a
+               join terms t on t.id = a.term_id
+               join academic_years ay on ay.id = t.academic_year_id
+              where a.class_id = c.id and ay.is_current
+                and (select count(*)::int from student_results r where r.assessment_id = a.id)
+                    < (select count(*)::int from students s where s.class_id = c.id and s.status = 'active'))
+              as pending_assessments,
+            (select count(*)::int from student_results r
+               join assessments a on a.id = r.assessment_id
+               join terms t on t.id = a.term_id
+               join academic_years ay on ay.id = t.academic_year_id
+              where a.class_id = c.id and ay.is_current) as recorded_results,
+            (select coalesce(sum(
+               (select count(*)::int from students s where s.class_id = a.class_id and s.status = 'active')
+             ), 0)::int
+               from assessments a
+               join terms t on t.id = a.term_id
+               join academic_years ay on ay.id = t.academic_year_id
+              where a.class_id = c.id and ay.is_current) as expected_results
+       from classes c
+       join academic_years ay on ay.id = c.academic_year_id
+      where c.status = 'active'
+        and ay.is_current
+        and exists (
+          select 1
+            from assessments a
+            join terms t on t.id = a.term_id
+            join academic_years y2 on y2.id = t.academic_year_id
+           where a.class_id = c.id and y2.is_current
+             and (select count(*)::int from student_results r where r.assessment_id = a.id)
+                 < (select count(*)::int from students s where s.class_id = c.id and s.status = 'active')
+        )
+      order by pending_assessments desc, lower(btrim(c.name))
+      limit 5`,
+  );
+
+  return {
+    overview: {
+      activeStudents: row?.active_students ?? 0,
+      activeClasses: row?.active_classes ?? 0,
+      activeTeachers: row?.active_teachers ?? 0,
+      activeSubjects: row?.active_subjects ?? 0,
+      assessmentsThisYear: row?.assessments_this_year ?? 0,
+      recordedResults: row?.recorded_results ?? 0,
+      expectedResults: row?.expected_results ?? 0,
+      pendingAssessments: row?.pending_assessments ?? 0,
+      activeStaff,
+      pendingLeaveRequests,
+    },
+    academicAttention: attentionRows.rows.map((c) => ({
+      classId: c.class_id,
+      className: c.class_name,
+      pendingAssessments: c.pending_assessments,
+      completionPercent:
+        c.expected_results > 0 ? Math.round((100 * c.recorded_results) / c.expected_results) : 100,
+    })),
+  };
+}
+
+/**
+ * The principal getter. Routing by role is convenience, never authorization:
+ * the role guards run before any connection is opened, and load* re-reads
+ * everything through the caller's RLS context regardless.
  */
 export async function getPrincipalDashboardData(
   user: SessionUser,
 ): Promise<PrincipalDashboardData | null> {
   if (user.role !== 'principal') return null;
   if (!can(user, 'results:read')) return null;
+  return withUserContext(user, (tx) => loadPrincipalDashboardData(tx, user));
+}
 
-  return withUserContext(user, async (tx) => {
-    const { rows } = await tx.query<{
-      active_students: number;
-      active_classes: number;
-      active_subjects: number;
-      assessments_this_year: number;
-      results_this_year: number;
-    }>(
-      `select
-         (select count(*)::int from students where status = 'active') as active_students,
-         (select count(*)::int from classes where status = 'active') as active_classes,
-         (select count(*)::int from subjects where status = 'active') as active_subjects,
-         (select count(*)::int from assessments a
-            join terms t on t.id = a.term_id
-            join academic_years ay on ay.id = t.academic_year_id
-           where ay.is_current) as assessments_this_year,
-         (select count(*)::int from student_results r
-            join assessments a on a.id = r.assessment_id
-            join terms t on t.id = a.term_id
-            join academic_years ay on ay.id = t.academic_year_id
-           where ay.is_current) as results_this_year`,
-    );
-    const row = rows[0];
-    return {
-      activeStudents: row?.active_students ?? 0,
-      activeClasses: row?.active_classes ?? 0,
-      activeSubjects: row?.active_subjects ?? 0,
-      assessmentsThisYear: row?.assessments_this_year ?? 0,
-      resultsThisYear: row?.results_this_year ?? 0,
-    };
-  });
+export interface BursarRecentPayment {
+  id: string;
+  studentName: string;
+  amount: MinorUnits;
+  method: string;
+  receivedAt: string;
 }
 
 export interface BursarDashboardData {
@@ -283,52 +442,97 @@ export interface BursarDashboardData {
   payrollUnderReview: number;
   paymentsToday: number;
   paymentsTodayTotal: MinorUnits;
+  /** Non-reversed receipts recorded this calendar month. */
+  monthToDateReceipts: MinorUnits;
+  /** Most recent non-reversed payments, newest first. */
+  recentPayments: BursarRecentPayment[];
 }
 
 /**
- * The bursar's landing: fee collection, expenses waiting, payroll review and
- * today's receipts. All figures come from the ledger views and reads the
- * permission matrix already grants the bursar.
+ * BURSAR'S LANDING - Phase 5.
+ *
+ * A FINANCIAL OPERATIONS overview: arrears from the ledger view, today's and
+ * this month's receipts, expenses and payroll awaiting review, plus a recent
+ * payment activity strip. It reads no academic tables at all - the matrix
+ * gives the bursar no results permissions, and a dashboard that computed
+ * "student performance" would contradict that. `loadBursarDashboardData` is
+ * the exported seam (takes no user: every figure is RLS-scoped, so the caller
+ * context comes from the transaction, exactly as with the Phase 4 seams).
+ */
+export async function loadBursarDashboardData(tx: Queryable): Promise<BursarDashboardData> {
+  const overview = await tx.query<{
+    arrears_count: number;
+    arrears_total: number;
+    pending_expenses: number;
+    payroll_under_review: number;
+    payments_today: number;
+    payments_today_total: number;
+    month_to_date_receipts: number;
+  }>(
+    `select
+       (select count(*)::int from v_student_fee_balances where is_in_arrears)
+         as arrears_count,
+       (select coalesce(sum(balance), 0)::bigint from v_student_fee_balances where is_in_arrears)
+         as arrears_total,
+       (select count(*)::int from expenses where status = 'submitted') as pending_expenses,
+       (select count(*)::int from payroll_runs where status = 'under_review')
+         as payroll_under_review,
+       (select count(*)::int from fee_payments
+         where not is_reversed and received_at >= date_trunc('day', now())) as payments_today,
+       (select coalesce(sum(amount), 0)::bigint from fee_payments
+         where not is_reversed and received_at >= date_trunc('day', now()))
+         as payments_today_total,
+       (select coalesce(sum(amount), 0)::bigint from fee_payments
+         where not is_reversed and received_at >= date_trunc('month', now()))
+         as month_to_date_receipts`,
+  );
+  const row = overview.rows[0];
+
+  const recent = await tx.query<{
+    id: string;
+    student_name: string;
+    amount: number;
+    method: string;
+    received_at: string;
+  }>(
+    `select p.id, s.full_name as student_name, p.amount, p.method::text as method,
+            p.received_at::text as received_at
+       from fee_payments p
+       join students s on s.id = p.student_id
+      where not p.is_reversed
+      order by p.received_at desc, p.created_at desc
+      limit 5`,
+  );
+
+  return {
+    arrearsCount: row?.arrears_count ?? 0,
+    arrearsTotal: row?.arrears_total ?? 0,
+    pendingExpenses: row?.pending_expenses ?? 0,
+    payrollUnderReview: row?.payroll_under_review ?? 0,
+    paymentsToday: row?.payments_today ?? 0,
+    paymentsTodayTotal: row?.payments_today_total ?? 0,
+    monthToDateReceipts: row?.month_to_date_receipts ?? 0,
+    recentPayments: recent.rows.map((p) => ({
+      id: p.id,
+      studentName: p.student_name,
+      amount: p.amount,
+      method: p.method,
+      receivedAt: p.received_at,
+    })),
+  };
+}
+
+/**
+ * The bursar getter. Same guard-then-read shape as the principal getter: the
+ * role guard keeps non-bursars off the query entirely, and the seam stays
+ * RLS-bounded for defense in depth.
  */
 export async function getBursarDashboardData(
   user: SessionUser,
 ): Promise<BursarDashboardData | null> {
   if (user.role !== 'bursar') return null;
   if (!can(user, 'fees:read')) return null;
-
-  return withUserContext(user, async (tx) => {
-    const { rows } = await tx.query<{
-      arrears_count: number;
-      arrears_total: number;
-      pending_expenses: number;
-      payroll_under_review: number;
-      payments_today: number;
-      payments_today_total: number;
-    }>(
-      `select
-         (select count(*)::int from v_student_fee_balances where is_in_arrears)
-           as arrears_count,
-         (select coalesce(sum(balance), 0)::bigint from v_student_fee_balances where is_in_arrears)
-           as arrears_total,
-         (select count(*)::int from expenses where status = 'submitted') as pending_expenses,
-         (select count(*)::int from payroll_runs where status = 'under_review')
-           as payroll_under_review,
-         (select count(*)::int from fee_payments
-           where not is_reversed and received_at >= date_trunc('day', now())) as payments_today,
-         (select coalesce(sum(amount), 0)::bigint from fee_payments
-           where not is_reversed and received_at >= date_trunc('day', now()))
-           as payments_today_total`,
-    );
-    const row = rows[0];
-    return {
-      arrearsCount: row?.arrears_count ?? 0,
-      arrearsTotal: row?.arrears_total ?? 0,
-      pendingExpenses: row?.pending_expenses ?? 0,
-      payrollUnderReview: row?.payroll_under_review ?? 0,
-      paymentsToday: row?.payments_today ?? 0,
-      paymentsTodayTotal: row?.payments_today_total ?? 0,
-    };
-  });
+  return withUserContext(user, (tx) => loadBursarDashboardData(tx));
 }
 
 // ---------------------------------------------------------------------------

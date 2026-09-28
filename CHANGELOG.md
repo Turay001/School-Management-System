@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          405 passed / 405, 23 files
+npm run test          437 passed / 437, 25 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green (typecheck + lint + test + build)
 ```
@@ -42,8 +42,8 @@ npm run verify        green (typecheck + lint + test + build)
 | `lib/money.test.ts`                                    | 10    |
 | `lib/format.test.ts`                                   | 7     |
 | `repositories/postgres/__tests__/queryBuilder.test.ts` | 42    |
-| `auth/permissions.test.ts`                             | 24    |
-| `components/layout/__tests__/navigation.test.ts`       | 18    |
+| `auth/permissions.test.ts`                             | 27    |
+| `components/layout/__tests__/navigation.test.ts`       | 20    |
 | `db/__tests__/consistency.test.ts`                     | 16    |
 | `db/__tests__/roles.test.ts`                           | 14    |
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
@@ -58,6 +58,8 @@ npm run verify        green (typecheck + lint + test + build)
 | `db/__tests__/payroll-workflow.test.ts`                | 5     |
 | `db/__tests__/student-detail-rls.test.ts`              | 12    |
 | `db/__tests__/self-service-rls.test.ts`                | 18    |
+| `db/__tests__/role-dashboard-security.test.ts`         | 15    |
+| `portal/__tests__/dashboard-scope.test.ts`             | 12    |
 
 One check sits outside `npm run verify`, recorded here so the exclusion is
 deliberate rather than silent: `npm run format:check`, which as of Phase 7
@@ -1601,3 +1603,161 @@ reuses existing permissions (`employees:read_own`, `leave:read_own`,
 `results:record` via the teacher scope) and existing RLS as the final
 enforcement. GATE 2 discipline continues to hold: nothing in this phase expands
 the authorization matrix.
+
+## Phase 13 — Principal & Bursar role dashboards ("Phase 5", owner-approved)
+
+The previous phases built the applications shell: role-aware routing, nav and a
+teacher experience. The Proprietor/Admin dashboards carried the operations load;
+every other role landed on a placeholder. Phase 5 makes the **Principal** a
+genuine academic-oversight landing and the **Bursar** a genuine
+financial-operations landing, each built from the LIVE database inside the
+role's RLS context, each reusing the existing attention and aggregation
+services, and each adding zero new permissions, tables or RLS policy.
+
+### The Principal landing (`src/components/dashboard/principal-dashboard.tsx`)
+
+A school-wide **academic oversight** dashboard, read-only by the matrix
+(principal holds no `results:record` / `subjects:manage` / `leave:approve`):
+
+- **School at a glance** — active students, active classes, class teachers
+  (distinct `classes.teacher_id` on current-year active classes), active
+  subjects, assessments this year.
+- **Academic progress** — marks completion (recorded ÷ expected, derived from
+  live marks), assessments awaiting marks, and (permission-gated) active staff
+  and pending leave requests. **Report-card readiness is deliberately surfaced
+  as marks completion**: report cards are derived from `student_results`
+  (`results.ts`), there is no generated report-card state to measure, and the
+  phase forbids inventing one. The attendance module is **not enabled**
+  (no nav item or page exists), so attendance is omitted from the overview
+  exactly per the phase matrix.
+- **Classes requiring attention** — the top five current-year classes that still
+  have assessments with recorded marks below class roll, with an honest
+  completion percentage and a deep link into `/results?classId=…`.
+- **Financial snapshot** — a compact, three-card strip rendered only where the
+  permission matrix already grants the figure (`fees:read` arrears count,
+  `expenses:read` submissions count, `payroll:read` latest run). The numbers
+  come from the SAME `getDashboardData` aggregation the Admin dashboard renders
+  — no duplicated calculation, no second authorization path.
+
+The service is split into an exported seam `loadPrincipalDashboardData(tx, user)`
+with the same shape as the Phase 11/12 seams. Staff and leave are separate
+permission dimensions inside the seam: `activeStaff` requires `employees:read`
+and `pendingLeaveRequests` requires a leave-read permission, and either field is
+`null` (card absent) rather than `0` (card claims "nothing") when the caller
+lacks the permission. The public getter guards `role === 'principal'` AND
+`results:read` BEFORE `withUserContext` opens a connection.
+
+### The Bursar landing (`src/components/dashboard/bursar-dashboard.tsx`)
+
+A **financial-operations** dashboard with no academic content — the matrix
+gives the bursar no results permissions, and a landing that implied otherwise
+would contradict the model:
+
+- **Financial overview** — students in arrears (count + outstanding total from
+  `v_student_fee_balances`), payments recorded today (count + total),
+  receipts this month (non-reversed, since `date_trunc('month', now())`), and a
+  combined "awaiting review" counter (payroll runs `under_review` + expense
+  submissions).
+- **Recent payments** — the five newest non-reversed `fee_payments` (student,
+  method, amount, date), newest first.
+- **Expenses awaiting review** — reuses the Expenses module's own
+  `listExpenses(user, { status: 'submitted', pageSize: 5 })` service rather than
+  re-deriving the list; deep link to `/expenses?status=submitted`.
+- **Payroll review** — the same `LatestPayroll` shape the Admin dashboard
+  renders (period, status, net, employees, missing-bank-details / unreconciled
+  warnings) since the bursar holds `payroll:review`.
+- The shared attention list (`attentionRequired`) and `getDashboardData` strip
+  render as before, so the bursar keeps the same waiting-on-me signals every
+  other privileged role gets.
+
+The exported seam `loadBursarDashboardData(tx)` takes no user object: every
+figure is RLS-scoped by the transaction context and there are no
+permission-gated fields, matching the Phase 12 seam convention.
+
+### Query economy (no duplicated business logic)
+
+Most of the dashboard figures come from the existing SECURITY INVOKER views and
+the shared `getDashboardData` aggregation; the phase added only the two small
+named queries per landing.
+
+- Principal page: 9 statement batches — 3 from its own seam (overview scalar,
+  staff/leave scalar, attention list ≤ 5) + 6 shared `getDashboardData`.
+- Bursar page: 10 batches — 2 from its own seam (overview scalar, recent
+  payments ≤ 5) + 6 shared `getDashboardData` + 2 from the reused
+  `listExpenses` count+page.
+- No caching was added; every read runs in the caller's RLS context each render,
+  so authorization is never cached.
+
+### RLS audit: the actual schema differed from the gate's assumed matrix in three places
+
+All three were **reported and preserved**, not changed (per the phase gate):
+
+1. **Admin vs the fee ledger.** The gate assumed admin could see financial
+   reads. Raw RLS `fee_payments_select`/`fee_adjustments`/
+   `student_fee_assignments`/`v_student_fee_balances` DO admit the admin role,
+   but admin has **no `fees:read` permission**, so every fee service denies
+   admin. The service layer is the established contract; the raw-RLS reality is
+   asserted (not "fixed") in `role-dashboard-security.test.ts` and documented.
+2. **Bursar vs the class catalog.** `classes_select` admits the bursar, but the
+   bursar holds zero academic permissions and no service exposes academic
+   reads; the dashboard reads no academic tables at all.
+3. **Principal vs leave.** Principal sees organisation-wide leave rows at the
+   RLS level but holds only `leave:read_own` (view-only) — the dashboard counts
+   pending requests but offers no approve affordance.
+
+### Regression tests added
+
+- `db/__tests__/role-dashboard-security.test.ts` (15 tests, real PGlite + RLS
+  GUC context): the principal seam returns the exact school-wide overview for
+  the principal and **stays RLS-bounded when a teacher calls it** (own-class
+  scope, `activeStaff` null, never school-wide); the bursar seam returns the
+  exact ledger numbers for the bursar and **empty ledgers, not invented zeros,
+  for a teacher**; and the role × data-domain matrix is locked row-by-row
+  (teacher/bursar/principal/admin/proprietor × students, assessments, marks,
+  subjects, fees, expenses, payroll runs & items, bank accounts, employees,
+  leave). RLS write denials: bursar cannot record marks or create an
+  assessment; teacher cannot record a fee payment or write an expense. The
+  admin fee-ledger RLS nuance is asserted openly.
+- `portal/__tests__/dashboard-scope.test.ts` (12 tests, pure unit — no
+  database): every role getter returns `null` for roles it does not serve,
+  academic writes deny the bursar AND the principal, financial writes/reads
+  deny admin and teacher — all at the `assertPermission` boundary before any
+  connection.
+- `auth/permissions.test.ts` (+3): the principal's academic-oversight license
+  (reads only, no academic or financial writes), the bursar's
+  financial-operations license (no academic tokens at all), and the unchanged
+  admin/teacher side of the matrix.
+- `navigation.test.ts` (+2): the principal is offered every module its
+  dashboard links to; the bursar the same for financial modules and **no**
+  academics.
+
+### Files created
+
+- `src/server/db/__tests__/role-dashboard-security.test.ts` (15 tests)
+- `src/server/portal/__tests__/dashboard-scope.test.ts` (12 tests)
+
+### Files modified
+
+- `src/server/portal/dashboard.ts` — richer `PrincipalDashboardData` /
+  `BursarDashboardData`, exported `loadPrincipalDashboardData(tx, user)` and
+  `loadBursarDashboardData(tx)` seams, role-guarded getters
+- `src/components/dashboard/principal-dashboard.tsx`, `bursar-dashboard.tsx` —
+  rebuilt landings
+- `src/server/auth/permissions.test.ts`, `src/components/layout/__tests__/navigation.test.ts`
+- `CHANGELOG.md` (this section), `docs/architecture.md` (role dashboards)
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        437 passed / 437, 25 files (role-dashboard-security = 15,
+                   dashboard-scope = 12, permissions = 27, navigation = 20)
+npm run build       exit 0, both dashboards compile
+```
+
+**No new permissions, no new tables, no new migrations, no RLS changes.**
+Every figure is computed server-side from live, RLS-scoped data; all financial
+calculations are deterministic; the Proprietor/Admin dashboard and its
+attention list are untouched (regression-locked by the existing tests). The
+three schema-vs-model differences found are reported above and preserved.
