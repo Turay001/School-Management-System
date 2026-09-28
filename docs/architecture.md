@@ -126,6 +126,35 @@ There is one Reports page (`/reports`) whose sections are role-gated:
 multiple roles, but the figures shown are filtered by the same matrix the
 module routes enforce.
 
+## Role dashboards
+
+`/dashboard` is a role dispatcher (Phase 10 of the registry): every signed-in
+role lands on a landing built for what its matrix allows. Routing by role is
+convenience, never authorization - each data getter refuses roles it does not
+serve, and the reads run inside `withUserContext` like every other page.
+
+- **Proprietor and admin** keep the school-wide operations dashboard
+  (staff, payroll, arrears, expenses, attention), unchanged.
+- **Teacher** lands on My Classes / My Subjects / assessments awaiting marks.
+  Everything is scoped to `classes.teacher_id = app_current_employee_id()` in
+  the current academic year and the layer reads no financial tables. The
+  `classes` *catalog* is deliberately school-wide reference data (migration
+  `012` `classes_select` grants all five roles), so the teacher-landing filter
+  is explicit in the service while student/assessment/mark scope is RLS.
+- **Principal** gets a school-wide academic overview plus the same
+  permission-driven attention list. Financial figures appear only where the
+  matrix already grants them (`fees:read`, `payroll:read`, `expenses:read`);
+  this landing does not expand them.
+- **Bursar** gets a financial landing - arrears from `v_student_fee_balances`,
+  payments recorded today from `fee_payments`, payroll and expenses awaiting
+  review - and, by design, no academics.
+
+The sidebar follows the same rules as the routes: Dashboard is shown to any
+authenticated user (`always`), module feature flags (`NavOptions.leaveEnabled`,
+from deployment config) hide a module's entry without touching the permission
+matrix, and hiding a link is affordance - the route handler and RLS still
+forbid misuse.
+
 ## Academics: subjects, assessments and results
 
 Teachers record student marks into named assessments (CSV upload or a manual

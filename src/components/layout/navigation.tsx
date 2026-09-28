@@ -23,6 +23,12 @@ import { can, canAny, type Permission, type SessionUser } from '@/server/auth/pe
  * sidebar only renders items the signed-in role may actually use; hiding a
  * link here is affordance - the route handler still forbids unauthorized use.
  *
+ * The dashboard is the exception that proves the rule: every role lands on
+ * its own role-scoped dashboard, so the link is shown to any authenticated
+ * user (`always: true`). Module-level feature flags (e.g. Leave) are
+ * respected through `NavOptions` so a disabled module stops appearing in the
+ * navigation without touching the permission matrix.
+ *
  * `placeholder: true` marks modules whose data layer/screens arrive in a
  * later phase. They route to the "coming online" page instead of a dead 404.
  */
@@ -33,6 +39,13 @@ export interface NavItem {
   access: readonly Permission[];
   icon: ComponentType<IconProps>;
   placeholder?: boolean;
+  /**
+   * Always shown to any authenticated user, bypassing `access`. Only the
+   * dashboard qualifies: every role lands on its own role-scoped dashboard,
+   * and the route itself requires a session, so hiding the link would serve
+   * no security purpose - it would just strand a teacher in a dead end.
+   */
+  always?: boolean;
 }
 
 export interface NavGroup {
@@ -43,7 +56,13 @@ export interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     items: [
-      { href: '/dashboard', label: 'Dashboard', access: ['employees:read'], icon: IconDashboard },
+      {
+        href: '/dashboard',
+        label: 'Dashboard',
+        access: ['employees:read'],
+        icon: IconDashboard,
+        always: true,
+      },
     ],
   },
   {
@@ -102,9 +121,10 @@ const NAV_GROUPS: NavGroup[] = [
       {
         href: '/notifications',
         label: 'Notifications',
-        // Visible to everyone with staff records - the item can never be hidden
-        // behind an empty permission list (an empty list matches no one).
-        access: ['employees:read'],
+        // Visible to every staff-linked account: the module's own page gates
+        // each item by its source permission, so a teacher lands on an honest
+        // "all clear" where a manager sees the full approval queue.
+        access: ['employees:read', 'employees:read_own'],
         icon: IconBell,
       },
       {
@@ -117,20 +137,35 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+/** Options that shape the navigation surface per deployment. */
+export interface NavOptions {
+  /** False hides the Leave module from the sidebar (feature flag). */
+  leaveEnabled?: boolean;
+}
+
 /** Groups and items visible to one user, in document order. */
-export function navGroupsFor(user: SessionUser | null): NavGroup[] {
+export function navGroupsFor(user: SessionUser | null, options: NavOptions = {}): NavGroup[] {
   if (!user) return [];
+  const leaveEnabled = options.leaveEnabled ?? true;
   return NAV_GROUPS.flatMap((group) => {
-    const items = group.items.filter((item) => canAny(user, item.access));
+    const items = group.items.filter((item) => {
+      if (item.always) return true;
+      if (item.href.startsWith('/leave') && !leaveEnabled) return false;
+      return canAny(user, item.access);
+    });
     return items.length === 0 ? [] : [{ ...group, items }];
   });
 }
 
 /** The label of the current section, for the header breadcrumb. */
-export function sectionLabelForPathname(user: SessionUser | null, pathname: string): string | null {
+export function sectionLabelForPathname(
+  user: SessionUser | null,
+  pathname: string,
+  options: NavOptions = {},
+): string | null {
   if (!user) return null;
   if (pathname === '/dashboard') return 'Dashboard';
-  for (const group of navGroupsFor(user)) {
+  for (const group of navGroupsFor(user, options)) {
     for (const item of group.items) {
       if (pathname === item.href || pathname.startsWith(`${item.href}/`)) return item.label;
     }

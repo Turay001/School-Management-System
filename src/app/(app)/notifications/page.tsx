@@ -38,7 +38,7 @@ export default async function NotificationsPage() {
   const user = await getSessionUser();
   if (!user) redirect('/login');
 
-  if (!canAny(user, ['employees:read'])) {
+  if (!canAny(user, ['employees:read', 'employees:read_own'])) {
     return (
       <EmptyState
         title="Nothing to see here"
@@ -205,7 +205,9 @@ function buildItems(input: BuildInput): AttentionItem[] {
       isAction: false,
       title: 'Staff without salary',
       detail: `${staffGaps.activeWithoutSalary} ${
-        staffGaps.activeWithoutSalary === 1 ? 'active staff member has' : 'active staff members have'
+        staffGaps.activeWithoutSalary === 1
+          ? 'active staff member has'
+          : 'active staff members have'
       } no salary on file, so payroll cannot pay them.`,
       href: '/staff',
     });

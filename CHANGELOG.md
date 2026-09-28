@@ -28,7 +28,7 @@ figures are frozen at the value they had when that phase was written.
 ```
 npm run typecheck     exit 0
 npm run lint          exit 0
-npm run test          343 passed / 343, 19 files
+npm run test          364 passed / 364, 21 files
 npm run format:check  FAILS - see Phase 7 (whole-tree Prettier engine drift, deliberate)
 npm run verify        green (typecheck + lint + test + build)
 ```
@@ -43,6 +43,7 @@ npm run verify        green (typecheck + lint + test + build)
 | `lib/format.test.ts`                                   | 7     |
 | `repositories/postgres/__tests__/queryBuilder.test.ts` | 42    |
 | `auth/permissions.test.ts`                             | 18    |
+| `components/layout/__tests__/navigation.test.ts`       | 13    |
 | `db/__tests__/consistency.test.ts`                     | 16    |
 | `db/__tests__/roles.test.ts`                           | 14    |
 | `db/__tests__/audit-write-path.test.ts`                | 13    |
@@ -51,6 +52,7 @@ npm run verify        green (typecheck + lint + test + build)
 | `db/__tests__/migrations.test.ts`                      | 10    |
 | `db/__tests__/rls.test.ts`                             | 10    |
 | `db/__tests__/results-rls.test.ts`                     | 16    |
+| `db/__tests__/dashboard-rls.test.ts`                   | 8     |
 | `db/__tests__/views.test.ts`                           | 8     |
 | `db/__tests__/service-context.test.ts`                 | 7     |
 | `db/__tests__/payroll-workflow.test.ts`                | 5     |
@@ -1251,4 +1253,95 @@ npm run lint        exit 0
 npm run test        343 passed / 343, 19 files (results-rls.test.ts = 16)
 npm run build       exit 0, all new routes compiled
 npm run verify      green
+```
+
+## Phase 10 — Role-aware application shell
+
+Approved as "Phase 2" of the role-aware roadmap: the dashboard route now lands
+staff on a dashboard shaped for what they are actually allowed to do. No new
+permissions, no new tables, no schema migration - the shell is UI + read
+services over the existing matrix and ledger.
+
+### Why this shape
+
+- **A role without a purpose-built landing is a dead end.** The previous route
+  rendered one admin-centric dashboard for everyone; a teacher got a page of
+  cards they had no permission to see filled in, and - because the Dashboard
+  nav item was gated on `employees:read` - no sidebar entry at all.
+- **Landings are live reads, not mock-ups.** Every figure is computed from the
+  database inside `withUserContext`, so RLS scopes it exactly like any other
+  page. Each data getter refuses roles it does not serve (`null`), so a future
+  routing mistake cannot conjure cross-role figures.
+- **Feature flags shape the nav surface without touching the matrix.** Leave is
+  hidden from the sidebar when `enableLeave` is off; routes remain
+  permission-gated no matter what the sidebar shows.
+
+### What each role lands on
+
+| Role       | Landing                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------- |
+| proprietor | Unchanged school-wide operations dashboard (staff, payroll, arrears, expenses, attention). |
+| admin      | Same dashboard (their matrix already hides Payroll/Fees cards).                              |
+| teacher    | My Classes, My Subjects, and assessments awaiting marks - scoped to `classes.teacher_id`.    |
+| principal  | School-wide academic overview (students, classes, subjects, assessments, marks) + the    |
+|            | same permission-driven attention list. Financial figures only where the matrix grants them. |
+| bursar     | Fees/arrears, payments recorded today, payroll and expenses awaiting review.                |
+
+### Navigation changes
+
+- **Dashboard is now shown to every authenticated user** (`always: true`). A
+  session is already required to see the shell, so the link hides nothing; it
+  just stops stranding roles that lack `employees:read`.
+- **Nav `NavOptions.leaveEnabled`**: the layout reads
+  `getConfig().enableLeave` and the sidebar drops the Leave group when off.
+- **Notifications widened to `employees:read_own`** so staff-linked teachers
+  get a destination; the page already gates each item by its source permission
+  and shows staff/teachers an honest empty state.
+
+### Scoping facts this phase pinned down in tests
+
+- `classes_select` grants all five roles the class *catalog* (reference data,
+  migration 012) - the teacher-landing "my classes" filter
+  (`c.teacher_id = app_current_employee_id()`) is therefore explicit in the
+  service, and student/assessment/mark scope is enforced at the RLS layer.
+- A misrouted aggregation query is still RLS-bounded: a teacher running the
+  principal overview sees only their own students, assessments and results.
+
+### Files created
+
+- `src/components/dashboard/{admin,teacher,principal,bursar}-dashboard.tsx`,
+  `password-change-alert.tsx` - per-role server components
+- `src/components/layout/__tests__/navigation.test.ts` (13 tests)
+- `src/server/db/__tests__/dashboard-rls.test.ts` (8 tests, run as `samjona_app`)
+
+### Files modified
+
+- `src/app/(app)/dashboard/page.tsx` - role dispatcher that renders the four
+  dashboards
+- `src/server/portal/dashboard.ts` - `getTeacherDashboardData`,
+  `getPrincipalDashboardData`, `getBursarDashboardData` (+ types)
+- `src/components/layout/{navigation,sidebar,app-shell}.tsx`,
+  `src/app/(app)/layout.tsx` - always-dashboard, `leaveEnabled` threading
+- `src/app/(app)/notifications/page.tsx` - gate widened to
+  `employees:read_own`
+- `docs/architecture.md` - "Role dashboards" section
+
+### Real bug found while building (caught by the harness first)
+
+| Bug                                                                | Where           | Why it mattered                                                       |
+| ------------------------------------------------------------------ | --------------- | --------------------------------------------------------------------- |
+| `SELECT DISTINCT ... ORDER BY lower(btrim(name))` | teacher subjects | Postgres rejects ORDER BY expressions not in the SELECT list with DISTINCT. The subjects query is sorted in the service instead. |
+
+The teacher-bounded overview test initially expected `assessments = 1`; the
+correct value is 2 (the teacher has two of their own assessments). The test was
+corrected, not the RLS: `classes` stay school-wide reference data by design
+(migration 012 `classes_select`).
+
+### Verification
+
+```
+npm run typecheck   exit 0
+npm run lint        exit 0
+npm run test        364 passed / 364, 21 files (navigation = 13, dashboard-rls = 8)
+npm run build       exit 0, /dashboard compiles as the role dispatcher
 ```

@@ -24,12 +24,15 @@ function initials(user: PortalUser): string {
 export function SidebarContent({
   user,
   onNavigate,
+  leaveEnabled = true,
 }: {
   user: PortalUser;
   onNavigate?: () => void;
+  /** Feature flag from deployment config; hides the Leave module when off. */
+  leaveEnabled?: boolean;
 }) {
   const pathname = usePathname();
-  const groups = navGroupsFor(user);
+  const groups = navGroupsFor(user, { leaveEnabled });
 
   return (
     <div className="flex h-full flex-col">
@@ -47,8 +50,7 @@ export function SidebarContent({
             ) : null}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
-                const active =
-                  pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
