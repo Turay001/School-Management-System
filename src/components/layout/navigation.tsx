@@ -64,7 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Finance',
     items: [
       { href: '/payroll', label: 'Payroll', access: ['payroll:read'], icon: IconPayroll },
-      { href: '/fees', label: 'Fees', access: ['fees:read'], icon: IconFees, placeholder: true },
+      { href: '/fees', label: 'Fees', access: ['fees:read'], icon: IconFees },
       { href: '/expenses', label: 'Expenses', access: ['expenses:read'], icon: IconExpenses, placeholder: true },
     ],
   },
