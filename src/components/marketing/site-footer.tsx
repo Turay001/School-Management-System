@@ -1,21 +1,23 @@
 import Link from 'next/link';
 
 import { Brand } from '@/components/brand';
-import { NAV_LINKS, PAGE_SECTIONS, SAMJONA_BRAND } from '@/lib/brand';
+import { ACCESS_NOTE, NAV_LINKS, PAGE_SECTIONS, SAMJONA_BRAND } from '@/lib/brand';
 
 /**
  * Page footer.
  *
  * No address, telephone number, email address or social link, because the
- * repository holds none: the corresponding settings rows are null and flagged
- * as unconfirmed. A footer is the easiest place to fabricate contact details by
+ * repository holds none: the corresponding settings rows are null and flagged as
+ * unconfirmed. A footer is the easiest place to fabricate contact details by
  * reflex, so it is worth saying explicitly that their absence is a deliberate
- * position and not an oversight - it will be filled in from `SAMJONA_BRAND` the
- * moment the school supplies real values.
+ * position and not an oversight. What it does carry is the one piece of contact
+ * guidance that is actually true — accounts come from the school office — and
+ * that is `ACCESS_NOTE`, used here from the same place the hero uses it rather
+ * than retyped, so the two can never drift apart.
  *
- * The closing note is the one sentence a parent most needs to be told plainly,
- * and a footer is where somebody who has scrolled the whole page finishes
- * reading.
+ * The wordmark's sublabel carries the system's name rather than the tagline.
+ * A footer's job is to answer "whose is this" at the bottom of the page, and
+ * "School Management System" answers that better than a slogan does.
  */
 export function SiteFooter() {
   return (
@@ -25,7 +27,7 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <Brand href="/" sublabel={SAMJONA_BRAND.product} label={`${SAMJONA_BRAND.name} home`} />
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-              {SAMJONA_BRAND.tagline}. {SAMJONA_BRAND.subline} {SAMJONA_BRAND.location}.
+              {SAMJONA_BRAND.systemName}, {SAMJONA_BRAND.location}. {SAMJONA_BRAND.tagline}.
             </p>
           </div>
 
@@ -49,10 +51,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-border/70 pt-6">
-          <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            {SAMJONA_BRAND.name} — {SAMJONA_BRAND.location}. Accounts are created and issued by the
-            school. If you do not have one, please ask at the school office.
-          </p>
+          <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">{ACCESS_NOTE}</p>
 
           <nav
             aria-label="Footer"
@@ -71,9 +70,26 @@ export function SiteFooter() {
               href="/login"
               className="font-semibold text-primary underline underline-offset-4 transition-colors hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Login
+              Sign In
             </Link>
           </nav>
+
+          {/*
+            The copyright line.
+
+            `new Date()` in a server component is evaluated when the page is
+            rendered, so on a statically generated page this is the build year.
+            That is the right behaviour for a school site — there is no
+            per-request content here to invalidate — and it is why the year is
+            not hardcoded, which would need an edit every January.
+
+            The notice names the school, not "SAMJONA" and not a company that
+            does not exist. `wordmark` is the brand and `name` is the legal-ish
+            holder of the copyright, and only the latter belongs in a notice.
+          */}
+          <p className="mt-6 text-xs text-muted-foreground">
+            &copy; {new Date().getFullYear()} {SAMJONA_BRAND.name}
+          </p>
         </div>
       </div>
     </footer>

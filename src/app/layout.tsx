@@ -22,15 +22,24 @@ import { SAMJONA_BRAND } from '@/lib/brand';
 const siteUrl = process.env.NEXTAUTH_URL;
 
 /**
- * The description is the sentence a parent or a search engine reads before
- * deciding whether this page is for them, so it is written for them. It
- * deliberately contains no implementation language: a visitor who cannot tell
- * what the product does for them has already gone somewhere else.
+ * The description is the sentence a visitor or a search engine reads before
+ * deciding what this is, so it is written to name the system and the school it
+ * belongs to. It deliberately contains no implementation language, and no
+ * commercial language either: nothing here is for sale, and a description that
+ * reads as an advertisement is a description a search result will be judged on
+ * as one.
+ *
+ * The previous version ended "with clear, practical access for parents and
+ * guardians". That was not true of the system: the application's roles are
+ * proprietor, bursar, admin, principal and teacher, so a guardian has no account
+ * and there is no parent portal. It named families as users of a system they
+ * cannot use. The families are in the description now as the people the school
+ * works for, which is both accurate and closer to the truth.
  */
 const description =
-  'SAMJONA makes school management simpler. A single, organised place for ' +
-  'student records, staff, fees, payroll and results — with clear, practical ' +
-  'access for parents and guardians, and less paperwork for the school office.';
+  'The SAMJONA School Management System is the digital system of Samjona ' +
+  'International Academy in Sierra Leone — where the school office, teachers ' +
+  'and families work from the same student, staff and financial records.';
 
 export const metadata: Metadata = {
   title: {

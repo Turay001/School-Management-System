@@ -1,9 +1,9 @@
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import { ACCESS_NOTE, HERO_POINTS, SAMJONA_BRAND } from '@/lib/brand';
+import { ACCESS_NOTE, SAMJONA_BRAND } from '@/lib/brand';
 
-import { IconTile, SECTION_INNER } from './section';
+import { SECTION_INNER } from './section';
 import styles from './marketing.module.css';
 
 /**
@@ -16,16 +16,35 @@ import styles from './marketing.module.css';
  * mood and the scrim carries the contrast, and neither is asked to do the
  * other's job.
  *
- * Three decisions worth stating, because the alternatives were available.
+ * WHAT THE FIRST SCREEN HAS TO SAY
+ * -------------------------------
+ * That this is the SAMJONA School Management System. Not a product that manages
+ * schools, and not a product at all - the school's own system. So the wordmark
+ * is the largest thing on the page and the descriptor sits directly under it as
+ * part of the same heading, rather than the two competing as title and tagline.
+ * A visitor who takes in one line should come away having read
+ * "SAMJONA SCHOOL MANAGEMENT SYSTEM".
+ *
+ * Four decisions worth stating, because the alternatives were available.
  *
  * 1. The photograph is decorative and is hidden from assistive technology. The
  *    hero's job is to say what SAMJONA is, and it says that in words directly
  *    underneath. Announcing a photograph of the academy on top of that adds a
  *    caption nobody needs.
- * 2. Both calls to action go to `/login`. There is no public sign-up - accounts
- *    are issued by the school - so a "Get started" button that led anywhere
- *    else would be a dead end dressed as a conversion.
- * 3. The header stays light and the hero sits under it, rather than the header
+ * 2. The primary button is "Sign In" and goes to `/login`; the secondary is
+ *    "Learn More" and goes to the About section on this page. "Get Started" was
+ *    the previous label and it is the wrong verb for a page like this - it
+ *    invites a stranger to begin using something, which is a sales page's
+ *    opening move. Here the visitor is being introduced to a system that is
+ *    already running. A secondary that jumped to `/login` as well made two
+ *    buttons lead to the same door, which reads as though the page has nowhere
+ *    else to send anyone; an in-page anchor is honest and is a real invitation.
+ * 3. The three cards that used to sit under the buttons are gone. They were
+ *    claims - "the whole school in one place", "clear for parents" - and this
+ *    page is not in the business of making claims. They also pushed the
+ *    photograph out of the first screen, which is the opposite of what the
+ *    photograph is for.
+ * 4. The header stays light and the hero sits under it, rather than the header
  *    floating transparently over the photograph. Over a dark image the wordmark
  *    would need a second colourway, and a second colourway for one surface is
  *    the beginning of a brand that drifts.
@@ -69,7 +88,7 @@ export function Hero() {
           >
             {SAMJONA_BRAND.wordmark}
             <span className="mt-2 block text-2xl font-semibold leading-tight tracking-tight text-white/90 sm:text-3xl lg:text-4xl">
-              {SAMJONA_BRAND.tagline}
+              {SAMJONA_BRAND.product}
             </span>
           </h1>
 
@@ -79,7 +98,7 @@ export function Hero() {
           />
 
           <p className="mt-7 text-base leading-relaxed text-white/85 sm:text-lg">
-            {SAMJONA_BRAND.subline} {SAMJONA_BRAND.summary}
+            {SAMJONA_BRAND.subline}
           </p>
 
           {/*
@@ -89,44 +108,26 @@ export function Hero() {
           */}
           <div className="mt-9 flex flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <Button asChild size="lg" className="w-full sm:w-auto">
-              <Link href="/login">Get started</Link>
+              <Link href="/login">Sign In</Link>
             </Button>
+            {/*
+              An in-page anchor rather than a second link to `/login`. It has to
+              be a real destination: a `Learn More` button that scrolls to the
+              next section is an invitation, and the same button pointing at the
+              login screen is a disguised duplicate of the one beside it.
+            */}
             <Button
               asChild
               size="lg"
               variant="outline"
               className="w-full border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground sm:w-auto"
             >
-              <Link href="/login">Login</Link>
+              <a href="#about">Learn More</a>
             </Button>
           </div>
 
           <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/70">{ACCESS_NOTE}</p>
         </div>
-
-        {/*
-          The three claims under the hero are the everyday ones - records,
-          parents, office hours - rather than the ones a build review would
-          make. They exist so the first screen answers not just "what is this"
-          but "is this for me".
-
-          The tiles sit on a flat translucent fill rather than a blur. Glass is
-          a look rather than a contrast guarantee, and on a photograph it also
-          costs a compositing layer on exactly the devices least able to spare
-          one.
-        */}
-        <ul className="mt-14 grid gap-4 sm:grid-cols-3 sm:gap-5">
-          {HERO_POINTS.map((point) => (
-            <li
-              key={point.title}
-              className="rounded-2xl border border-white/15 bg-white/[0.07] p-5"
-            >
-              <IconTile icon={point.icon} tone="on-primary" className="bg-white/[0.12]" />
-              <h2 className="mt-4 text-sm font-semibold text-white">{point.title}</h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/75">{point.body}</p>
-            </li>
-          ))}
-        </ul>
       </div>
 
       {/*

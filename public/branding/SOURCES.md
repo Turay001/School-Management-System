@@ -20,7 +20,7 @@ though it were.
 | `src/app/icon.svg`                               | Favicon at `/icon.svg`, vector            | Drawn here from the brand tokens                               | Final unless the school supplies a logo     |
 | `public/branding/school-exterior-01.jpg`         | **The academy's own photograph.** 493×405 | Supplied by the school                                         | Archive copy — the ungraded source of truth |
 | `public/branding/school-exterior-01-hero.jpg`    | Hero backdrop, 1600×1314                  | Graded from the row above, for viewport width ≥ 640 px         | Derived — see "The hero grade" below        |
-| `public/branding/school-exterior-01-hero-sm.jpg` | Hero backdrop, 900×739                    | Graded from the row above, for viewport width < 640 px         | Derived — see "The hero grade" below        |
+| `public/branding/school-exterior-01-hero-sm.jpg` | Hero + closing panel, 900×739             | Graded from the row above, for viewport width < 640 px         | Derived — see "The hero grade" below        |
 
 There is no `next/image` usage anywhere in the application, `next.config.ts`
 declares no `images.remotePatterns`, and no image is fetched from a third party
@@ -48,6 +48,37 @@ than this repository's: photographs of identifiable children need the school's
 own consent, so none are on the page until that consent exists. It should not
 be read as a gap waiting to be filled by whoever implements it next.
 
+### On the absence of photography of people
+
+This one comes up, so it is worth being direct about why it has not been
+"fixed" by sourcing something.
+
+A redesign of this page asked for imagery of students, teachers, classrooms,
+the administration and the school environment. The honest answer is that none of
+that exists in the repository and none of it can be manufactured — a stock
+photograph of a classroom is not this school, and presenting one beside the
+wordmark would assert something untrue about real children in a real building.
+That is the same rule this file has enforced from the start, and it is not
+relaxed because a redesign asks for it.
+
+What the page does instead, and why it is not the thin result it looks like:
+
+- The **one real photograph carries the whole identity.** It is the hero, so it
+  is on the first screen of every visit, and it is repeated in the closing
+  panel so the page is bookended by the actual building rather than by a colour
+  block. One good photograph of the real school is stronger identity work than
+  six generic ones.
+- The **School Experience** section carries the people — students, families,
+  teachers, the office — in prose and in iconography rather than in faces. It
+  is the only place on the page where a photograph of people would genuinely
+  improve it, and it is the section to revisit the moment the school supplies
+  consented images.
+
+If the school sends through photographs — classroom, students at work, a teacher,
+an office scene — add them to this directory, list them in the table above with
+their consent basis, and they can be dropped into the School Experience section
+without touching the hero or re-grading anything.
+
 ## The hero photograph
 
 The hero uses the academy's own photograph, so the provenance question this file
@@ -56,7 +87,7 @@ caption explaining that it stands in for something else. Two implementation
 details are worth recording.
 
 **It is a CSS background, not `next/image`.** The hero's meaning is carried by
-its words — the wordmark, the tagline, one supporting sentence — so the
+its words — the wordmark, the system's name, one supporting sentence — so the
 photograph is decorative and is `aria-hidden`, which means it takes no `alt`
 attribute at all. Using `next/image` would mean writing an alt for an image
 nobody needs described, wrapping it to keep it sized, and paying for a runtime
@@ -71,6 +102,15 @@ Freetown should not download a 119 KB JPEG to fill a 390 px screen.
 the wrong axis, since a cheap handset tends to have a high DPR and therefore
 needs the _smaller_ file. See `.heroPhoto` in
 `src/components/marketing/marketing.module.css`.
+
+**It appears twice.** The hero, and the closing panel at the foot of the page,
+where the same small variant is blended into the brand teal at 20 % opacity
+through `mix-blend-luminosity`. That second use is deliberate and free: by the
+time anyone has scrolled to the bottom of the page the file is long since
+cached, so the repetition costs no additional request. `mix-blend-luminosity`
+takes the luminosity of the photograph and the colour of the panel, so the
+image cannot introduce a stray hue into a section meant to read as one flat
+brand colour.
 
 ### The hero grade
 
@@ -104,8 +144,28 @@ Because the brightest pixel is capped at 0.490, a composite of
 `a * 0.112 + (1 - a) * 0.490` clears WCAG AA against white once the scrim's
 alpha reaches 0.811. Every scrim stop in `marketing.module.css` was checked
 against that, measured over the actual composited pixels rather than over the
-gradient values. Measured worst cases: **4.99:1** for a 1440×700 desktop hero,
-**4.57:1** for a 390×980 phone hero.
+gradient values.
+
+Measure the scrim at **six** viewports, not one. The hero copy is a 672 px
+column inside a 1152 px container, so as a fraction of the viewport it reaches
+furthest right at exactly 1024 px — 68.8 % of the width — which is also the first
+viewport to get the horizontal desktop scrim. A scrim tuned at 1440 px measures
+4.99:1 there and fails every text region at 1024×768, worst case 3.71:1. The
+plateau therefore runs to 70 % rather than to a percentage chosen for the most
+common laptop. Measured worst cases:
+
+| Viewport  | Worst region |
+| --------- | ------------ |
+| 320×1040  | 4.60:1       |
+| 360×800   | 4.64:1       |
+| 768×1024  | 4.67:1       |
+| 1024×768  | 5.03:1       |
+| 1280×720  | 5.06:1       |
+| 1920×1080 | 5.09:1       |
+
+Holding the plateau out to 70 % costs the photograph almost nothing: the drop is
+pushed into 70–78 %, which is past the text on every viewport that gets the
+desktop scrim, and right-quarter visibility moved from a 0.395 spread to 0.386.
 
 These parameters are recorded so the grade can be reproduced or re-tuned. The
 generator script is deliberately not committed: `sharp` is a transitive

@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
  * Three details the mobile menu gets right, because a menu is where a landing
  * page usually fails on a phone:
  *
- *  1. It closes when a link is chosen, so tapping "For Parents" lands on the
+ *  1. It closes when a link is chosen, so tapping "About SAMJONA" lands on the
  *     section rather than on a section with a panel still covering half the
  *     screen.
  *  2. Escape closes it, and so does a click on the backdrop, because on a
@@ -66,7 +66,7 @@ export function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2 lg:ml-0">
           <Button asChild size="sm" className="hidden sm:inline-flex">
-            <Link href="/login">Login</Link>
+            <Link href="/login">Sign In</Link>
           </Button>
 
           <button
@@ -108,7 +108,7 @@ export function SiteHeader() {
             <div className="px-2 py-3">
               <Button asChild className="w-full">
                 <Link href="/login" onClick={() => setOpen(false)}>
-                  Login
+                  Sign In
                 </Link>
               </Button>
             </div>

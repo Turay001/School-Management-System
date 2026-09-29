@@ -1,16 +1,16 @@
-import { TRUST_NOTE, TRUST_POINTS, TRUST_PRINCIPLE } from '@/lib/brand';
+import { TRUST_POINTS, TRUST_PRINCIPLE } from '@/lib/brand';
 
 import { BenefitCard, Section, SectionHeading } from './section';
 
 /**
- * Trust and security.
+ * Privacy and trust.
  *
  * This section used to be a capability matrix: ten permissions against five
  * roles, with a tick or a cross in every cell, generated from the array the
  * server checks on every request. It was true and it was the wrong thing to
  * show a parent, who has no way to interpret it and no use for it.
  *
- * What replaces it is the promise a parent actually wants made to them - that
+ * What is here instead is the promise a parent actually wants made to them - that
  * the school is not being careless with their child's information - and the
  * four concrete things that make it true. Controlled access, individual
  * accounts, a view shaped by the person's role, and a log of what changed and
@@ -18,8 +18,14 @@ import { BenefitCard, Section, SectionHeading } from './section';
  * it is implemented today; `docs/security.md` remains the place the mechanism
  * is documented for the people who operate the system.
  *
- * `TRUST_PRINCIPLE` is given the section's own heading slot rather than being
- * a line above it, because it is the sentence worth remembering.
+ * `TRUST_PRINCIPLE` is given the section's own heading slot rather than being a
+ * line above it, because it is the sentence worth remembering.
+ *
+ * This section is also the one place the page is allowed to sound firm. A
+ * school's website has an obligation a vendor's does not: the school itself will
+ * be trusted with information about identifiable children, and a parent is
+ * entitled to be told plainly how that is handled. Softening it into brand
+ * warmth would be the wrong trade.
  */
 export function Trust() {
   return (
@@ -27,7 +33,7 @@ export function Trust() {
       <SectionHeading
         id="trust"
         tone="primary"
-        eyebrow="Trust & Security"
+        eyebrow="Privacy & Trust"
         title={TRUST_PRINCIPLE}
         lede={
           'Student and staff records are sensitive, and they are about children. ' +
@@ -41,10 +47,6 @@ export function Trust() {
           <BenefitCard key={item.title} {...item} tone="primary" />
         ))}
       </ul>
-
-      <p className="mt-8 max-w-3xl text-sm leading-relaxed text-primary-foreground/75">
-        {TRUST_NOTE}
-      </p>
     </Section>
   );
 }

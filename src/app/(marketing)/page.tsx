@@ -1,16 +1,11 @@
 import type { Metadata } from 'next';
 
 import { About } from '@/components/marketing/about';
-import { FinalCta } from '@/components/marketing/section-cta';
-import { ForAdministration } from '@/components/marketing/for-administration';
-import { ForParents } from '@/components/marketing/for-parents';
-import { ForStaff } from '@/components/marketing/for-staff';
+import { BrandStatement } from '@/components/marketing/brand-statement';
+import { Community } from '@/components/marketing/community';
 import { Hero } from '@/components/marketing/hero';
-import { HowItWorks } from '@/components/marketing/how-it-works';
-import { SchoolRules } from '@/components/marketing/school-rules';
-import { SystemCapabilities } from '@/components/marketing/system-capabilities';
+import { SchoolExperience } from '@/components/marketing/school-experience';
 import { Trust } from '@/components/marketing/trust';
-import { WhySamjona } from '@/components/marketing/why-samjona';
 import { SAMJONA_BRAND } from '@/lib/brand';
 
 /**
@@ -25,47 +20,73 @@ import { SAMJONA_BRAND } from '@/lib/brand';
  *
  * WHAT IT IS FOR
  * --------------
- * Three readers, in this order, and the order is the argument:
+ * To introduce SAMJONA's School Management System to the people who interact
+ * with SAMJONA. Not to sell it, and not to recruit schools as customers — this
+ * is one school's own system and the visitor is most likely already connected
+ * to it in some way.
  *
- *   1. A parent, who needs to know what they will be able to see.
- *   2. A teacher, who needs to know whether it will save them time.
- *   3. A proprietor, who is deciding whether this replaces what they currently
- *      run the school on.
+ * The order follows a single argument, and each step is one a visitor actually
+ * asks in sequence:
  *
- * The first two sections after the hero answer the first two readers. The third
- * — `ForAdministration` — is where payroll, fees, staff, expenses and reports
- * appear as substance rather than as a mention, because a proprietor who reads
- * a landing page that covers results and fees concludes the product has no
- * payroll, and that conclusion is reached in about four seconds.
+ *   1. Hero          What is this?  -> SAMJONA, and what kind of thing it is.
+ *   2. About         What is it for? -> the school, and the system it runs on.
+ *   3. Experience    Who is it for?  -> students, families, teachers, the office.
+ *   4. Community     Why does it matter? -> because a school runs on shared,
+ *                                      current information.
+ *   5. Trust         Can I rely on it? -> what happens to a child's records.
+ *   6. Statement     What is it trying to be? -> the closing intention.
  *
- * `SystemCapabilities` then gives the entire catalogue in one place, with the
- * status of each part stated plainly. It is the section that lets a reader
- * check the scope rather than take the page's word for it, and it is the reason
- * the three audience sections above it can be lenses rather than the whole truth.
+ * WHAT THIS PAGE IS NOT
+ * ---------------------
+ * It is not a product page, and it is written to be recognisably not one. That
+ * constraint is the reason several sections were removed, and it is worth
+ * recording why, because the earlier version of this file argued the opposite.
  *
- * `SchoolRules` follows, because it is what makes the statuses in that list
- * believable; `Trust` follows that, because a reader who has just been told the
- * system will not invent an absence rule is the reader most receptive to being
- * told what protects the data.
+ * The previous page had eleven sections, including a fifteen-row capability
+ * catalogue with a readiness badge on every row ("Ready now", "Partly ready",
+ * "Held back"), a list of what was not built yet, and separate sections
+ * pitching parents, staff and the proprietor as three markets. All of it was
+ * true, and all of it read as vendor documentation: a build report and a
+ * segment analysis, published on a school's own front page.
  *
- * It is a page about the value of the product, not a page about how the product
- * was built. Anything a visitor would need a technical vocabulary to understand
- * does not belong here, and none of it does — including the fact that the
- * completeness of this page is maintained deliberately.
+ * A school introducing its own system does not publish its build status to
+ * families, and it does not need to sell itself to its own staff. So the status
+ * badges, the not-yet list and the three-market structure are gone.
  *
- * Claim discipline: every sentence is sourced from `src/lib/brand.ts`, where
- * the provenance of each string is recorded. Nothing about the school that is
- * not in the repository is stated — no founding year, roll size, motto,
- * results, fee amounts, awards, address, telephone or email.
+ * The scope did not go with them, and that is the part worth being careful
+ * about. The school office really does keep student records, staff, salaries,
+ * fees, expenses and reports, and a page about a school that stopped mentioning
+ * any of that would have quietly become a brochure for something much smaller
+ * than SAMJONA. That work is still described — in `SCHOOL_EXPERIENCE` and
+ * `COMMUNITY_POINTS` in `src/lib/brand.ts`, and in prose, inside sentences about
+ * what the school does. What is gone is the grid of icons and status labels that
+ * made the page look like a comparison table.
+ *
+ * Where a capability is not built, the page says nothing about it. Nothing here
+ * promises attendance recording, email or SMS delivery, printed fee receipts,
+ * grade letters or statutory deductions, because none of those exist in the
+ * running system. Silence is not a claim, and `docs/` remains the record of what
+ * the system does and does not do.
+ *
+ * Claim discipline: every sentence is sourced from `src/lib/brand.ts`, where the
+ * provenance of each string is recorded. Nothing about the school that is not in
+ * the repository is stated — no founding year, roll size, motto, results, fee
+ * amounts, awards, address, telephone or email.
  */
 export const metadata: Metadata = {
   // `absolute`, because the root layout's template would otherwise append
   // "· SAMJONA" to a title that already begins with the school name.
-  title: { absolute: `${SAMJONA_BRAND.name} | ${SAMJONA_BRAND.tagline}` },
+  //
+  // The system is named first, not the school. This was the other way round
+  // until this pass, with the school name leading and the tagline behind it —
+  // which is a description of a school's website rather than a statement of
+  // what the page is. A browser tab and a search result both have room for the
+  // system name, and the system name is the thing being introduced.
+  title: { absolute: `${SAMJONA_BRAND.systemName} | ${SAMJONA_BRAND.name}` },
   description:
-    'SAMJONA is a complete school management system: student records, staff, ' +
-    'payroll, fees, results, leave, expenses and reports in one place, with ' +
-    'clear access for parents, teachers and the school office.',
+    'The SAMJONA School Management System is the digital system of Samjona ' +
+    'International Academy in Sierra Leone, where students, staff, families ' +
+    'and the school office work from the same records.',
   alternates: { canonical: '/' },
 };
 
@@ -73,16 +94,11 @@ export default function MarketingPage() {
   return (
     <>
       <Hero />
-      <WhySamjona />
-      <ForParents />
-      <ForStaff />
-      <ForAdministration />
-      <SystemCapabilities />
-      <HowItWorks />
-      <SchoolRules />
-      <Trust />
       <About />
-      <FinalCta />
+      <SchoolExperience />
+      <Community />
+      <Trust />
+      <BrandStatement />
     </>
   );
 }

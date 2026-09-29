@@ -385,15 +385,6 @@ export function IconMessage(p: IconProps) {
   );
 }
 
-export function IconClock(p: IconProps) {
-  return (
-    <Svg {...p}>
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 7.2V12l3.2 2" />
-    </Svg>
-  );
-}
-
 export function IconHistory(p: IconProps) {
   return (
     <Svg {...p}>

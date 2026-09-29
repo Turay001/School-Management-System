@@ -96,9 +96,12 @@
  * With the backdrop capped at 0.490, a composite of `a * 0.112 + (1 - a) *
  * 0.490` clears WCAG AA against white once `a >= 0.811`. Every stop below was
  * checked against that number for the whole region each line of copy occupies,
- * at a 1440x700 desktop hero and a 390x980 phone hero. Measured worst cases:
+ * at six viewports rather than two, because the binding constraint is not the
+ * most common screen size. Measured worst cases:
  *
- *   desktop  4.99:1    mobile  4.57:1
+ *   320x1040  4.60:1     1024x768  5.03:1
+ *   360x800   4.64:1     1280x720  5.06:1
+ *   768x1024  4.67:1     1920x1080 5.09:1
  *
  * Both are measured over the actual composited pixels, not over the gradient
  * stops, so they include the photograph underneath.
@@ -106,10 +109,27 @@
  * The mobile scrim is vertical, because the text spans the full width there and
  * has to be dark all the way across. From 1024px the text moves into a
  * left-hand column, so the scrim turns horizontal and deliberately thins out
- * towards the right: alpha 0.86 out to 58% of the width, then down to 0.08 at
+ * towards the right: alpha 0.87 out to 70% of the width, then down to 0.10 at
  * the edge. That is what keeps the photograph visible on a desktop screen
- * instead of drowning it - measured at 0.22 mean luminance across 0.022 to
- * 0.415 in the right quarter, against 0.16 under the text column.
+ * instead of drowning it - measured at 0.21 mean luminance across 0.024 to
+ * 0.409 in the right quarter, against 0.16 under the text column.
+ *
+ * WHY THE PLATEAU ENDS AT 70% AND NOT 58%
+ * --------------------------------------
+ * The dark plateau has to cover the text column at the NARROWEST viewport that
+ * gets the desktop scrim, not at the usual one. The hero copy is a 672px column
+ * inside a 1152px container with 32px gutters, so as a fraction of the viewport
+ * it reaches furthest right at exactly 1024px - 68.8% of the width - which is
+ * also the first viewport to get this scrim at all. An earlier version held the
+ * plateau to 58% because 1440px is the size one tends to design on: it measured
+ * 4.99:1 there, looked correct, and failed every text region at 1024x768 with a
+ * worst case of 3.71:1. A single viewport cannot catch this; the fraction moves
+ * by 12 points across the range the media query covers.
+ *
+ * Holding to 70% costs the photograph very little, because the drop is pushed
+ * into the 70-78% band, which is past the text on every viewport that gets this
+ * scrim. Right-quarter visibility went from a 0.395 spread to 0.386 - within
+ * noise of what it was.
  *
  * On a phone the same arithmetic leaves the photograph as a dark, low-contrast
  * texture rather than a picture. That is the correct outcome, not a shortfall:
@@ -137,10 +157,10 @@
       linear-gradient(
         to right,
         rgb(6 34 41 / 0.88) 0%,
-        rgb(6 34 41 / 0.86) 58%,
-        rgb(6 34 41 / 0.62) 70%,
-        rgb(6 34 41 / 0.24) 86%,
-        rgb(6 34 41 / 0.08) 100%
+        rgb(6 34 41 / 0.87) 70%,
+        rgb(6 34 41 / 0.66) 78%,
+        rgb(6 34 41 / 0.3) 88%,
+        rgb(6 34 41 / 0.1) 100%
       ),
       linear-gradient(
         to bottom,
@@ -150,51 +170,6 @@
         rgb(6 34 41 / 0.66) 100%
       );
   }
-}
-
-/*
- * THE READINESS BADGES
- * ====================
- * The three status pills on the complete-system list. They are defined here
- * rather than taken from `--success` and `--warning` because those tokens do not
- * survive contact with an 11px label, and the label is what carries the meaning.
- *
- * The arithmetic, measured rather than assumed:
- *
- *   --warning on --warning at 10%   3.09:1     fails AA
- *   --success on --success at 10%   4.57:1     passes, by 0.07
- *
- * 11px semibold is not "large text" under WCAG - that starts at 18.66px bold -
- * so it needs the full 4.5:1 that body text gets. Amber is the problem: it is a
- * light hue, so tinting it toward white moves the background the wrong way and
- * eats most of the contrast that the hue provided.
- *
- * Hence a darker text step for each hue, held to the same 12% tint:
- *
- *   ready            hsl(151 55% 22%) on the green tint   7.26:1
- *   partial / held   hsl(28 80% 26%)  on the amber tint   7.36:1
- *
- * Local to this module on purpose. `--warning` is the application's own token
- * and is used for warning badges throughout the product; darkening it here to
- * suit a marketing page would change every screen that uses it.
- *
- * `partial` and `held` share a colour deliberately. They are different words
- * with different reasons - one is unfinished, the other is a decision - and the
- * distinction is carried by the label and the note beside it. Giving them
- * separate colours would imply a difference in severity that does not exist,
- * and would put a third hue on a page that has two.
- */
-.readinessReady {
-  border-color: hsl(151 55% 31% / 0.32);
-  background-color: hsl(151 55% 31% / 0.12);
-  color: hsl(151 55% 22%);
-}
-
-.readinessPartial,
-.readinessHeld {
-  border-color: hsl(36 92% 40% / 0.34);
-  background-color: hsl(36 92% 40% / 0.12);
-  color: hsl(28 80% 26%);
 }
 
 /*

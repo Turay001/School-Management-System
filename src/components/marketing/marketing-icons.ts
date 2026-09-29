@@ -2,27 +2,14 @@ import type { ComponentType } from 'react';
 
 import {
   IconBell,
-  IconCalendar,
-  IconClock,
-  IconDashboard,
-  IconExpenses,
   IconFamily,
-  IconFees,
   IconFolder,
   IconHistory,
-  IconLeave,
   IconLock,
   IconMessage,
-  IconPayroll,
-  IconReportCard,
-  IconReports,
   IconSchool,
-  IconSearch,
-  IconSettings,
   IconShield,
   IconStudent,
-  IconSubjects,
-  IconUser,
   IconUsers,
   type IconProps,
 } from '@/components/icons';
@@ -37,33 +24,27 @@ import type { MarketingIcon } from '@/lib/brand';
  * typed: adding a key to `MarketingIcon` without drawing it here is a build
  * error rather than a blank tile at runtime.
  *
- * Every drawing is one that already exists in `src/components/icons.tsx` for the
- * application's own navigation. Nothing was drawn for the landing page: the
- * icons on a page about a school should be the same icons as the icons inside
- * the school, and a parallel set would be one more thing to keep consistent.
+ * Seven of these ten drawings were made for this page — `family`, `folder`,
+ * `history`, `lock`, `message`, `school` and `shield` — because the earlier
+ * version of the page was written as a capability list and there was no icon for
+ * a family, a record or a school building. The other three (`bell`, `student`,
+ * `users`) are the application's own navigation icons, and they are reused rather
+ * than redrawn: a page about a school should carry the same icons the school
+ * carries, and a parallel set would be one more thing to keep consistent.
+ *
+ * The set is short, and every key is in use. An icon map is where unused keys
+ * accumulate, because a union type makes them free to add and nothing ever
+ * asks you to remove one.
  */
 export const MARKETING_ICONS: Record<MarketingIcon, ComponentType<IconProps>> = {
-  academics: IconSubjects,
-  attendance: IconCalendar,
   bell: IconBell,
-  clock: IconClock,
-  dashboard: IconDashboard,
-  expenses: IconExpenses,
   family: IconFamily,
-  fees: IconFees,
   folder: IconFolder,
   history: IconHistory,
-  leave: IconLeave,
   lock: IconLock,
   message: IconMessage,
-  payroll: IconPayroll,
-  records: IconReportCard,
-  reports: IconReports,
   school: IconSchool,
-  search: IconSearch,
-  settings: IconSettings,
   shield: IconShield,
   staff: IconUsers,
   students: IconStudent,
-  user: IconUser,
 };
