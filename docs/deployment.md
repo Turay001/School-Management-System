@@ -64,6 +64,50 @@ how many connections a single warm instance holds.
 | `LOGIN_RATE_LIMIT_ATTEMPTS` / `LOGIN_RATE_LIMIT_WINDOW_MS`   | sign-in throttling.                                                                                             |
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | only if you use the Supabase browser client; the anon key is public by design. Never any `NEXT_PUBLIC_` secret. |
 
+### Supabase URL configuration (a manual dashboard step)
+
+This is not an environment variable and nothing in the codebase can set or
+verify it. It is required for password reset and email confirmation to work at
+all, and a deployment that skips it produces a link that appears to work and
+does nothing.
+
+**Supabase → Authentication → URL Configuration.**
+
+| Setting           | Value                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| **Site URL**      | the production origin, e.g. `https://school.example.com` — **not** `http://localhost:3000`        |
+| **Redirect URLs** | the production origin **with the callback path**, e.g. `https://school.example.com/auth/callback` |
+
+**Why the callback path must be listed explicitly.** `resetPasswordForEmail`
+requests a redirect to `/auth/callback?next=/login&type=recovery`. Supabase
+checks that URL against the allow-list and, when it does not match, **discards
+it and builds the link from the Site URL instead** — with no error surfaced to
+the application. The recipient then gets a link to `/?code=…` with no path on
+it, and because the landing page has nothing to do with a bare `code`, the
+exchange never happens and the reset silently does nothing.
+
+Two things make this easy to get wrong, so check them specifically:
+
+- **A bare origin is not a path match.** `https://school.example.com` does not
+  authorise `https://school.example.com/auth/callback`. List the path, or use
+  `https://school.example.com/**` if you also expect the project to send links
+  to other routes.
+- **A localhost Site URL breaks production for real users.** It is the fallback
+  for every rejected redirect, so a teacher who requests a reset from the live
+  site is emailed a link to `localhost:3000`, which resolves to their own
+  machine and nowhere else.
+
+Keep the localhost entries as well, for local development — both
+`http://localhost:3000/auth/callback` and the localhost Site URL. The
+allow-list is a union, so serving both from one project is fine.
+
+`RecoveryRescue` in `src/components/marketing/` is a safety net for exactly
+this misconfiguration: it forwards a stray `?code=` on the landing page to the
+callback. It makes the flow work, and it is not a substitute for the
+configuration above — the link a user receives is still built by Supabase, so
+until the Site URL is the production origin, real users are emailed a localhost
+link and never reach the application at all.
+
 ### What the deploy host should NOT have
 
 - `ADMIN_DATABASE_URL` — the superuser connection. It bypasses every RLS

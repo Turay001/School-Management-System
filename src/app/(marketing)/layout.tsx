@@ -1,3 +1,4 @@
+import { RecoveryRescue } from '@/components/marketing/recovery-rescue';
 import { SiteFooter } from '@/components/marketing/site-footer';
 import { SiteHeader } from '@/components/marketing/site-header';
 
@@ -11,6 +12,11 @@ import { SiteHeader } from '@/components/marketing/site-header';
  *
  * The skip link is here rather than in the components, because it must be the
  * first focusable element in the document for it to do its job.
+ *
+ * `RecoveryRescue` is mounted here, and renders nothing, because the Supabase
+ * Site URL — the fallback a rejected password-reset redirect is built from — is
+ * the site root, which is this layout. See the component for the failure it
+ * removes.
  */
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -26,6 +32,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
         {children}
       </main>
       <SiteFooter />
+      <RecoveryRescue />
     </div>
   );
 }
