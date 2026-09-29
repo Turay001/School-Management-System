@@ -58,9 +58,40 @@ import { SAMJONA_BRAND } from '@/lib/brand';
  * fees, expenses and reports, and a page about a school that stopped mentioning
  * any of that would have quietly become a brochure for something much smaller
  * than SAMJONA. That work is still described — in `SCHOOL_EXPERIENCE` and
- * `COMMUNITY_POINTS` in `src/lib/brand.ts`, and in prose, inside sentences about
+ * `COMMUNITY_GROUPS` in `src/lib/brand.ts`, and in prose, inside sentences about
  * what the school does. What is gone is the grid of icons and status labels that
  * made the page look like a comparison table.
+ *
+ * THE VOICE
+ * ---------
+ * The school speaks here, in the first person plural: our school, our teachers,
+ * our families, our students. A previous version of this page contained no "we",
+ * no "us" and no "our" anywhere in its prose, and described Samjona International
+ * Academy from the outside the way a visitor who had never been there might.
+ *
+ * That single change did more for the page's character than any of the layout
+ * work, and it cost nothing structurally. "Our office keeps our student records"
+ * is a sentence a school writes. "The office manages student record information"
+ * is a sentence a vendor's copywriter writes about a school. Both are accurate;
+ * only one of them makes the reader feel they have arrived somewhere rather than
+ * been shown something.
+ *
+ * The restraint rules above are unchanged by it. Every "our" still names
+ * something the repository can support, and the page still claims nothing about
+ * the school that is not in the repository — no founding year, roll size, motto,
+ * results, fee amounts, awards, address, telephone or email.
+ *
+ * AND ONE IDEA, SAID ONCE
+ * -----------------------
+ * "One set of records" used to appear seven times: in the footer's summary, in
+ * the About copy, in all four School Experience cards, and again as a titled
+ * card in the Community section. Seven restatements of one idea is seven chances
+ * to say nothing, and it is what made the page read as flat rather than wrong.
+ *
+ * The idea is now made once, in `ABOUT_PARAGRAPHS`, and nowhere else. Every
+ * section downstream is described in terms of people and what they need, not in
+ * terms of where the data lives. `src/lib/brand.ts` records this as a rule for
+ * anyone editing that file next.
  *
  * Where a capability is not built, the page says nothing about it. Nothing here
  * promises attendance recording, email or SMS delivery, printed fee receipts,

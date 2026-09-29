@@ -341,11 +341,18 @@ export function IconLeave(p: IconProps) {
 }
 
 /*
- * The eight icons below were added with the public landing page, for the
- * sections that explain SAMJONA to parents and staff rather than to a
+ * The five icons below were added with the public landing page, for the
+ * sections that explain SAMJONA to the people who use it rather than to a
  * developer. They follow the same conventions as the rest of the set - 24x24,
  * `currentColor`, 1.75 stroke - and each still sits next to a text label, so
  * none of them carries meaning on its own.
+ *
+ * Two more were drawn here and have since been deleted, along with the copy that
+ * used them. `IconFolder` and `IconMessage` belonged to a version of the page
+ * that described the system as a set of capabilities, where a folder stood for
+ * records and a speech bubble for communication. The page now says both of
+ * those things in sentences, and a drawing for an idea the page no longer
+ * isolates is only one more thing to keep consistent.
  */
 
 export function IconShield(p: IconProps) {
@@ -363,24 +370,6 @@ export function IconLock(p: IconProps) {
       <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
       <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
       <path d="M12 14.2v2.4" />
-    </Svg>
-  );
-}
-
-export function IconFolder(p: IconProps) {
-  return (
-    <Svg {...p}>
-      <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.2l2 2.4H19a1.5 1.5 0 0 1 1.5 1.5v9.6A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5Z" />
-      <path d="M8 13h8M8 16.5h5" />
-    </Svg>
-  );
-}
-
-export function IconMessage(p: IconProps) {
-  return (
-    <Svg {...p}>
-      <path d="M20.5 12.5c0 3.9-3.8 7-8.5 7-1 0-2-.2-2.9-.4L4 20.5l1.3-3.6A6.6 6.6 0 0 1 3.5 12.5c0-3.9 3.8-7 8.5-7s8.5 3.1 8.5 7Z" />
-      <path d="M8.5 12.5h.01M12 12.5h.01M15.5 12.5h.01" />
     </Svg>
   );
 }

@@ -1,12 +1,9 @@
 import type { ComponentType } from 'react';
 
 import {
-  IconBell,
   IconFamily,
-  IconFolder,
   IconHistory,
   IconLock,
-  IconMessage,
   IconSchool,
   IconShield,
   IconStudent,
@@ -24,25 +21,27 @@ import type { MarketingIcon } from '@/lib/brand';
  * typed: adding a key to `MarketingIcon` without drawing it here is a build
  * error rather than a blank tile at runtime.
  *
- * Seven of these ten drawings were made for this page — `family`, `folder`,
- * `history`, `lock`, `message`, `school` and `shield` — because the earlier
- * version of the page was written as a capability list and there was no icon for
- * a family, a record or a school building. The other three (`bell`, `student`,
- * `users`) are the application's own navigation icons, and they are reused rather
- * than redrawn: a page about a school should carry the same icons the school
- * carries, and a parallel set would be one more thing to keep consistent.
+ * Four of these seven drawings were made for this page — `family`, `history`,
+ * `lock`, `school` and `shield` — because the earlier version of the page was
+ * written as a capability list and there was no icon for a family, a record or
+ * a school building. The other two (`student`, `users`) are the application's
+ * own navigation icons, and they are reused rather than redrawn: a page about a
+ * school should carry the same icons the school carries, and a parallel set
+ * would be one more thing to keep consistent.
  *
- * The set is short, and every key is in use. An icon map is where unused keys
- * accumulate, because a union type makes them free to add and nothing ever
- * asks you to remove one.
+ * The set is exactly what the page uses, and that is checked rather than
+ * assumed. Ten keys were mapped here when the page had ten sections; two of
+ * them — `bell` and `folder` — belonged to copy that has since been cut, and
+ * `message` went with it. A union type makes unused keys free to add and
+ * nothing ever asks you to remove one, so the map is trimmed to the seven the
+ * page renders. `IconFolder` and `IconMessage` were then left with no caller at
+ * all and were removed from `src/components/icons.tsx`; `IconBell` stayed,
+ * because the application's own navigation uses it.
  */
 export const MARKETING_ICONS: Record<MarketingIcon, ComponentType<IconProps>> = {
-  bell: IconBell,
   family: IconFamily,
-  folder: IconFolder,
   history: IconHistory,
   lock: IconLock,
-  message: IconMessage,
   school: IconSchool,
   shield: IconShield,
   staff: IconUsers,

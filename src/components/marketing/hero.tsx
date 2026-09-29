@@ -18,19 +18,31 @@ import styles from './marketing.module.css';
  *
  * WHAT THE FIRST SCREEN HAS TO SAY
  * -------------------------------
- * That this is the SAMJONA School Management System. Not a product that manages
- * schools, and not a product at all - the school's own system. So the wordmark
- * is the largest thing on the page and the descriptor sits directly under it as
- * part of the same heading, rather than the two competing as title and tagline.
- * A visitor who takes in one line should come away having read
- * "SAMJONA SCHOOL MANAGEMENT SYSTEM".
+ * That this is the SAMJONA School Management System, and that it belongs to
+ * Samjona International Academy. Both, in that order, and the order is the
+ * design.
  *
- * Four decisions worth stating, because the alternatives were available.
+ * The overline carries the academy's name, the h1 carries the system's. A
+ * visitor who met "School Management System" first would be told what kind of
+ * product they had landed on, and a visitor who meets the school first is told
+ * whose front door they are standing at. Nothing else on the page can produce
+ * that impression, because every other section is below the fold - by the time
+ * anybody reaches the copy, the question of whose it is has been answered.
+ *
+ * Inside the h1, "SAMJONA" is the larger of the two lines and "School
+ * Management System" sits beneath it as a descriptor. A single long h1 reading
+ * "SAMJONA SCHOOL MANAGEMENT SYSTEM" would carry the same words, but it would
+ * render them at one weight and one size, and the school would stop being the
+ * louder of the two ideas. The brief asks that a visitor see SAMJONA before
+ * they see anything technical, and the type sizes are how that is done.
+ *
+ * Five decisions worth stating, because the alternatives were available.
  *
  * 1. The photograph is decorative and is hidden from assistive technology. The
  *    hero's job is to say what SAMJONA is, and it says that in words directly
  *    underneath. Announcing a photograph of the academy on top of that adds a
- *    caption nobody needs.
+ *    caption nobody needs. The photograph in the Community section is the
+ *    opposite case and does carry alt text, because there it is the content.
  * 2. The primary button is "Sign In" and goes to `/login`; the secondary is
  *    "Learn More" and goes to the About section on this page. "Get Started" was
  *    the previous label and it is the wrong verb for a page like this - it
@@ -44,7 +56,13 @@ import styles from './marketing.module.css';
  *    page is not in the business of making claims. They also pushed the
  *    photograph out of the first screen, which is the opposite of what the
  *    photograph is for.
- * 4. The header stays light and the hero sits under it, rather than the header
+ * 4. The supporting line is "Connecting our school, our teachers, our families
+ *    and our students." It was "A smarter way to manage school operations,
+ *    connect people, and keep SAMJONA moving forward", which is a claim about
+ *    the software being smarter than whatever came before - a sales page's
+ *    opening move, and a comparison the visitor never asked for. The new line
+ *    says what the system is for, in the school's own voice.
+ * 5. The header stays light and the hero sits under it, rather than the header
  *    floating transparently over the photograph. Over a dark image the wordmark
  *    would need a second colourway, and a second colourway for one surface is
  *    the beginning of a brand that drifts.
@@ -74,12 +92,32 @@ export function Hero() {
           about 75 characters a line.
         */}
         <div className="max-w-2xl">
-          <p className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-foreground/90">
+          {/*
+            The overline names the *school* before the h1 names the *system*.
+            Order matters here: a visitor who meets "School Management System"
+            first is being told what kind of product this is, and a visitor who
+            meets the academy's name first is being told whose front door they
+            are standing at. The same two phrases in the other order produce two
+            entirely different pages.
+
+            The pill treatment was dropped. A rounded translucent capsule with a
+            border is the badge idiom of a product page, where the line above the
+            title is a category marker; here the line is the school's own name,
+            and it is set as a plain overline. It was also the one remaining
+            piece of frosted-glass furniture on the page, and this brief asks
+            for less of that rather than more.
+
+            Rendered from `name` and `location` rather than typed out, so the
+            overline cannot disagree with the metadata or the footer. The
+            uppercase is styling, not data: the string stays properly cased
+            everywhere else on the page.
+          */}
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground/90 sm:text-sm">
             {SAMJONA_BRAND.name}
-            <span aria-hidden="true" className="text-primary-foreground/45">
+            <span aria-hidden="true" className="mx-2 text-primary-foreground/40">
               ·
             </span>
-            {SAMJONA_BRAND.location}
+            <span className="text-primary-foreground/70">{SAMJONA_BRAND.location}</span>
           </p>
 
           <h1

@@ -24,13 +24,12 @@
  * accumulating claims: it states what SAMJONA is, who it connects, and what it
  * is for, and then it stops.
  *
- * THE THREE RULES THAT FOLLOW FROM THAT
- * -------------------------------------
+ * THE FOUR RULES THAT FOLLOW FROM THAT
+ * ------------------------------------
  *   1. No inclusions, no exclusions. There is no "what's included" list, no
  *      readiness table, no status badge against any capability, and no list of
  *      what is not built. A school's own website does not publish a build
- *      report about itself; it describes the school. This is the single biggest
- *      change from the previous version of this page, which carried all three.
+ *      report about itself; it describes the school.
  *
  *   2. Scope is expressed in prose, not in a grid. The school office really does
  *      keep student records, staff, salaries, fees and reports, and a visitor
@@ -47,6 +46,34 @@
  *      exist in the running system. See `docs/` for what the system actually
  *      does; this file is not that document.
  *
+ *   4. Say each idea once. This is the rule a previous version broke, and
+ *      breaking it is what made the page feel flat rather than wrong. "One set
+ *      of records" appeared seven times — in the summary, in the About copy, in
+ *      all four School Experience cards and again as a titled card in the
+ *      Community section. Seven restatements of one idea is seven chances to
+ *      say nothing, and it read as a page that had run out of things to say.
+ *      The idea is now made once, in the second sentence of `ABOUT_PARAGRAPHS`,
+ *      and nowhere else. If a change to this file makes the same point twice,
+ *      one of the two sentences is the one to cut.
+ *
+ * THE VOICE
+ * ---------
+ * The school speaks in the first person plural: our school, our teachers, our
+ * families, our students. An earlier version of this file used the third person
+ * throughout and contained no "we", "us" or "our" anywhere — it described
+ * Samjona International Academy from the outside, the way a journalist might
+ * write about a school they had visited once.
+ *
+ * That is the difference between a brochure and a home page. The visitor is not
+ * being told about a school; on this page they have arrived at the school's own
+ * front door, and the school is speaking. "Our office keeps our student records"
+ * is a sentence a school writes. "The office manages student record
+ * information" is a sentence a vendor's copywriter writes about a school.
+ *
+ * The first person is not a substitute for accuracy. Every "our" in this file
+ * still names something the repository can support, and the restraint rules
+ * above are unchanged by it.
+ *
  * WHO THE PAGE MAY NOT OVERSTATE
  * ------------------------------
  *   - No invented school facts. There is no founding year, roll size, motto,
@@ -62,7 +89,9 @@
  *     this page describes what the school does for families — report cards,
  *     fee information, notices — and never implies that a parent signs in.
  *     An earlier version of this page said parents could check balances
- *     themselves, and that was not true of the system behind it.
+ *     themselves, and that was not true of the system behind it. The Families
+ *     card is worded around what families *receive*, which is both true and the
+ *     thing a parent actually cares about.
  *   - The currency is "NLe", flagged in the settings table as an unconfirmed
  *     assumption, so it is attached to no amount anywhere on the page.
  *
@@ -76,11 +105,23 @@
  */
 
 export const SAMJONA_BRAND = {
-  /** Supplied by the school. The repository holds only "SAMJONA". */
+  /**
+   * The two names, and why they are not the same.
+   *
+   * `name` is the school's full name, supplied by the school and used wherever
+   * the organisation is named in prose: the hero overline, the About heading, the
+   * footer, the copyright. `wordmark` is the short form, used only where the
+   * brand is set as a mark rather than named — the header, the hero's h1 and the
+   * footer's brand block.
+   *
+   * They are kept apart deliberately. Collapsing them into one field is how a
+   * page ends up reading "SAMJONA International Academy" in the middle of a
+   * sentence, where the mark belongs, or "SAMJONA" in the copyright, where the
+   * full name belongs. See also `configuredName` below, which is a third thing
+   * again and is not what the system is configured with.
+   */
   name: 'Samjona International Academy',
   wordmark: 'SAMJONA',
-  /** The only string the settings table actually holds, marked confirmed. */
-  configuredName: 'SAMJONA',
 
   /**
    * What this system is called, and the phrase the page exists to establish.
@@ -105,8 +146,8 @@ export const SAMJONA_BRAND = {
   /**
    * The brand statement.
    *
-   * One slogan, not several. The brief for this page listed six candidate
-   * lines and asked for the strongest; running two of them on one page is how a
+   * One slogan, not several. The brief for this page listed six candidate lines
+   * and asked for the strongest; running two of them on one page is how a
    * landing page ends up sounding like a poster. The other chosen line is the
    * closing statement at the foot of the page, far from this one.
    */
@@ -115,25 +156,44 @@ export const SAMJONA_BRAND = {
   /**
    * The supporting sentence under the hero title.
    *
-   * Names three things in order — running the school, connecting the people in
-   * it, and moving forward — because those are the three things a visitor
-   * arrives wondering. It describes no capability, so nothing in it can go out
-   * of date.
-   */
-  subline:
-    'A smarter way to manage school operations, connect people, and keep ' +
-    'SAMJONA moving forward.',
-
-  /**
-   * The short paragraph for the footer.
+   * It names the four groups the system connects, in the order the school would
+   * name them, and in the first person. It was previously "A smarter way to
+   * manage school operations, connect people, and keep SAMJONA moving forward",
+   * which is a claim about the software being smarter than what came before —
+   * a sales page's opening move, and a comparison the visitor had not asked
+   * for. This version says what the system is *for*, and stops.
    *
-   * Deliberately short, because a footer is read by somebody who has already
-   * scrolled the whole page and needs a summary rather than a pitch.
+   * It describes no capability, so nothing in it can go out of date.
    */
-  summary:
-    'SAMJONA School Management System brings the school office, the classroom ' +
-    'and the family together around one set of records, so the work of running ' +
-    'a school happens once and is easy to find afterwards.',
+  subline: 'Connecting our school, our teachers, our families and our students.',
+
+  /*
+   * THE FIELDS BELOW ARE RECORDS, NOT PAGE COPY
+   * -------------------------------------------
+   * `configuredName` and `currency` are not rendered anywhere, and that is the
+   * point of keeping them. Each records something the settings table actually
+   * holds, together with how confident that is, and their value is that the
+   * next person to edit this file can see the difference between a fact the
+   * school supplied and a placeholder somebody typed.
+   *
+   *   configuredName  The only name the settings table holds, and the only one
+   *                   marked confirmed. `name` above is longer than this and
+   *                   came from the school, but it is not what the system is
+   *                   configured with — a discrepancy worth being able to see.
+   *
+   *   currency        "NLe", flagged `is_placeholder`. It is attached to no
+   *                   amount on this page and must not be until the school
+   *                   confirms it, because a fee figure in the wrong currency
+   *                   is worse than no fee figure.
+   *
+   * A `summary` field used to sit here, for a paragraph in the footer. It was
+   * removed rather than left unused: this file's discipline is that every string
+   * in it is either rendered or is a recorded fact, and a third category of
+   * "maybe someone will want this" is how the file starts to drift.
+   */
+
+  /** The only name the settings table holds, and the only one marked confirmed. */
+  configuredName: 'SAMJONA',
 
   /** Currency unit only. Flagged `is_placeholder` in the settings table. */
   currency: 'NLe',
@@ -145,21 +205,39 @@ export const SAMJONA_BRAND = {
 /**
  * Header navigation.
  *
- * Four links and no more. This used to carry "What's Included", which is the
- * clearest single piece of vendor language the page had: it tells a visitor
- * they are shopping. A school introducing its own system links to the parts of
- * the page that describe the school.
+ * Three links. This used to carry four, and before that a "What's Included"
+ * entry — the clearest single piece of vendor language the page ever had,
+ * because it tells a visitor they are shopping.
+ *
+ * "School Experience" was dropped from the navigation but not from the page. It
+ * is the section a visitor scrolls into rather than one they navigate to, and
+ * four top-level links is already the point at which a nav starts reading as a
+ * product menu instead of a set of signposts. The full section list is still
+ * reachable in the footer's "On this page" list.
  */
 export const NAV_LINKS = [
   { id: 'home', label: 'Home' },
-  { id: 'about', label: 'About SAMJONA' },
-  { id: 'experience', label: 'School Experience' },
+  { id: 'about', label: 'About' },
   { id: 'community', label: 'Our Community' },
 ] as const;
 
-/** Page section order, used by the footer and by the in-page navigation. */
+/**
+ * The footer's "On this page" list.
+ *
+ * Every label here is the wording that actually appears on the page — the
+ * section's h2, or its eyebrow where the h2 is a slogan. That is not a
+ * formality. An earlier version of this list called the closing panel "The
+ * SAMJONA Commitment" while the panel itself was headed with the school's name,
+ * so the list advertised a heading that existed nowhere on the page and a visitor
+ * following it arrived at something they had not been told to expect.
+ *
+ * Where a section is named by its eyebrow rather than its h2, the eyebrow is used
+ * deliberately: "Better Communication. Better Management. Better School
+ * Experience." is a statement to be read, not a place to be linked to, and a
+ * navigation list made of three such statements would be a poster.
+ */
 export const PAGE_SECTIONS = [
-  { id: 'about', label: 'About SAMJONA' },
+  { id: 'about', label: 'About Samjona International Academy' },
   { id: 'experience', label: 'The School Experience' },
   { id: 'community', label: 'A Connected School Community' },
   { id: 'trust', label: 'Privacy & Trust' },
@@ -174,19 +252,11 @@ export const PAGE_SECTIONS = [
  * drawing. Adding a key here without drawing it is a build error rather than a
  * blank tile at runtime.
  *
- * The set is short because the page is short. Every key is in use.
+ * The set is short because the page is short. Every key is in use: the four
+ * groups of the school, and the four protections in the Privacy section.
  */
 export type MarketingIcon =
-  | 'bell'
-  | 'family'
-  | 'folder'
-  | 'history'
-  | 'lock'
-  | 'message'
-  | 'school'
-  | 'shield'
-  | 'staff'
-  | 'students';
+  'family' | 'history' | 'lock' | 'school' | 'shield' | 'staff' | 'students';
 
 export interface Benefit {
   title: string;
@@ -201,37 +271,45 @@ export interface Benefit {
 /**
  * Two paragraphs, and the only place the school is described.
  *
+ * The first paragraph is the one place on the entire page where the central
+ * idea is stated. It appears here and nowhere else — see rule 4 at the top of
+ * this file. Everything downstream is a consequence of it, described in terms of
+ * people rather than restated in terms of records.
+ *
  * Every clause is checked against something. "Sierra Leone" is the location the
- * repository holds; "the staff who register students and prepare payroll" and
- * "the teachers who record results" are the roles that exist; the phrase about
- * families describes what the school produces rather than an access model,
- * because there is no guardian login to describe.
+ * repository holds; "our office" and "our teachers" are the roles that exist;
+ * the sentence about families describes what the school sends them, not an
+ * access model, because there is no guardian login to describe.
  */
 export const ABOUT_PARAGRAPHS: readonly string[] = [
   'SAMJONA School Management System is the digital system of Samjona ' +
-    'International Academy, in Sierra Leone. It is where the school keeps its ' +
-    'students, its staff, its classes, its fees and its results — one shared set ' +
-    'of records rather than a stack of registers.',
-  'It is built around the people who use it every day: the office staff who ' +
-    'register students and prepare the school’s payroll, the teachers who ' +
-    'record results, and the families who need to know how their child is ' +
-    'doing without having to ask twice.',
+    'International Academy, in Sierra Leone. It brings our students, our staff, ' +
+    'our classes, our fees and our results together around one set of school ' +
+    'records — so the work of running our school is done once, and can be found ' +
+    'again the moment somebody needs it.',
+  'It is used by the people who work here: our office, our teachers and our ' +
+    'administrators. Our families meet it through the report cards, fee ' +
+    'information and term notices the school sends them.',
 ] as const;
 
 /**
- * Four factual lines under the About paragraphs.
+ * Three factual lines under the About paragraphs.
  *
  * "Used by" previously read "School staff, teachers and parents". That was not
- * accurate: a guardian has no account, so the line now names the roles that
+ * accurate: a guardian has no account, so the line names the roles that
  * actually sign in. The page still speaks to families — in the School
  * Experience section, about what the school gives them — but it does not put
  * them in a list of users.
+ *
+ * The "System" row was removed. It read "SAMJONA School Management System",
+ * which is the page's own title, the hero's h1, the document title and the
+ * footer's first line. A fourth row restating it added nothing a reader could
+ * not already see three times on the same screen.
  */
 export const ABOUT_FACTS: readonly { label: string; value: string }[] = [
   { label: 'School', value: SAMJONA_BRAND.name },
   { label: 'Where', value: SAMJONA_BRAND.location },
-  { label: 'System', value: SAMJONA_BRAND.systemName },
-  { label: 'Used by', value: 'The school office, teachers and administrators' },
+  { label: 'Used by', value: 'Our office, our teachers and our administrators' },
 ] as const;
 
 /* ------------------------------------------------------------------------ *
@@ -241,48 +319,50 @@ export const ABOUT_FACTS: readonly { label: string; value: string }[] = [
 /**
  * The four groups the school is made of.
  *
- * This replaces three separate audience sections — parents, staff, the office —
- * and it is the change that does the most work. Those three sections read as a
+ * This replaced three separate audience sections — parents, staff, the office —
+ * and it is the change that did the most work. Those three sections read as a
  * vendor segmenting its market, because that is what they were: each one listed
  * what that buyer would get. Four groups who are all *in the same school* reads
  * as a school, which is what this is.
  *
- * On families, specifically: this card is about what the school gives them and
- * keeps for them. It does not say a parent signs in, because there is no such
- * account. `docs/` and the application are the authority on that.
+ * These are now the shortest cards on the page — one sentence each, most of them
+ * under twenty words. An earlier version gave each group forty words, and used
+ * the space to re-explain the records idea four more times. The School
+ * Experience section is not where the system's architecture gets argued; it is
+ * where somebody finds out whether the people they are are here.
+ *
+ * On families, specifically: this card is about what the school gives them. It
+ * does not say a parent signs in, because there is no such account. `docs/` and
+ * the application are the authority on that.
  */
 export const SCHOOL_EXPERIENCE: readonly Benefit[] = [
   {
     icon: 'students',
-    title: 'Students',
+    title: 'Our Students',
     body:
-      'Every student has one record: their class, their subjects, their ' +
-      'teachers and their results. It is added once and looked after, rather ' +
-      'than written down again at the end of each term.',
+      'A student’s school information stays connected right across their ' +
+      'academic experience — from the class they are placed in to the results ' +
+      'they go home with.',
   },
   {
     icon: 'family',
-    title: 'Families',
+    title: 'Our Families',
     body:
-      'The school keeps families informed — report cards, fee information and ' +
-      'term notices come from the school’s own records, so what a family is ' +
-      'told is what the school actually recorded.',
+      'Families receive the information they need about their own child, ' +
+      'without everything having to be passed along by hand.',
   },
   {
     icon: 'staff',
-    title: 'Teachers',
+    title: 'Our Teachers',
     body:
-      'A teacher opens their own classes and subjects, records marks, and ' +
-      'produces the report card — without keeping a second set of records in a ' +
-      'exercise book.',
+      'Teachers work with their classes, subjects, marks and reports from our ' +
+      'school’s own system.',
   },
   {
     icon: 'school',
-    title: 'The school office',
+    title: 'Our School Office',
     body:
-      'Students, staff, salaries, fees, expenses and reports are held together ' +
-      'and worked out from the school’s records. The office is not ' +
-      'reconstructing the term at the end of it.',
+      'The office manages our student, staff, salary, fee, expense and report ' + 'information.',
   },
 ] as const;
 
@@ -291,46 +371,64 @@ export const SCHOOL_EXPERIENCE: readonly Benefit[] = [
  * ------------------------------------------------------------------------ */
 
 /**
- * The section that replaces the feature grids.
+ * The four groups again, this time as a relationship rather than as a list.
  *
- * Written as three short claims about the school rather than as a list of what
- * the software does. Each is true of the school as much as of the system, which
- * is the point: a page about a school should not read as though the school were
- * a customer of something.
+ * The School Experience section says who the people are. This one shows how they
+ * relate: what the office holds, what the teachers work from, what the students
+ * carry, and what reaches the families. Read top to bottom it is the shape of a
+ * school day.
  *
- * Nothing here names a specific screen, and nothing here can be wrong in the way
- * a capability list can be. "One record instead of several registers" is a fact
- * about how SAMJONA is organised; it is not a promise about a feature.
+ * Note what is deliberately absent. There are no arrows between the groups, no
+ * numbered steps, no boxes joined by lines. That vocabulary belongs to a product
+ * diagram, and a diagram of a workflow is exactly what this page must not look
+ * like — it says "software, sequenced" where the page needs to say "a school".
+ * The connection is made by the four sitting in one group under one heading, and
+ * by the photograph beside them, which is worth more than any connector line.
+ *
+ * The lines under each label are deliberately one clause long. The previous
+ * version of this section was three cards of about twenty-five words each, all
+ * of which were re-explaining the records idea again.
  */
-export const COMMUNITY_POINTS: readonly Benefit[] = [
+export const COMMUNITY_GROUPS: readonly Benefit[] = [
   {
-    icon: 'message',
-    title: 'Information that reaches people',
-    body:
-      'School notices and term information are posted once and seen by the ' +
-      'people they are for, instead of depending on who passed it on.',
+    icon: 'school',
+    title: 'School Office',
+    body: 'Keeps our records current and our fees and salaries accounted for.',
   },
   {
-    icon: 'folder',
-    title: 'One record, not several registers',
-    body:
-      'A student, a member of staff or a payment has one home in SAMJONA, so ' +
-      'the answer to “what does the file say?” is the same whoever you ask.',
+    icon: 'staff',
+    title: 'Teachers',
+    body: 'Teach and report from what the office has recorded.',
   },
   {
-    icon: 'bell',
-    title: 'A school office with its hands free',
-    body:
-      'Fees, salaries, leave and expenses are recorded as they happen, so the ' +
-      'office is not rebuilding a month of work at the end of it.',
+    icon: 'students',
+    title: 'Students',
+    body: 'Are taught and assessed through the term.',
+  },
+  {
+    icon: 'family',
+    title: 'Families',
+    body: 'Are told what they need to know, when they need to know it.',
   },
 ] as const;
 
-/** The sentence that introduces the community section. */
-export const COMMUNITY_LEDE =
-  'A school runs on people knowing things at the right moment. SAMJONA is ' +
-  'built so that the information exists, is current, and reaches the person who ' +
-  'needs it.';
+/**
+ * The sentence under the community heading.
+ *
+ * The brief's wording, kept verbatim because it is the most compressed statement
+ * of the relationship anywhere on the page: it names the three parties and the
+ * thing they share, in twelve words, without a single word about software.
+ */
+export const COMMUNITY_LEDE = 'School, staff and families, working from the same information.';
+
+/**
+ * Alt text for the photograph in this section.
+ *
+ * This is the first image on the page that carries meaning rather than mood, so
+ * it is the first one that gets an `alt` at all. It is stated as what the
+ * photograph shows, which is the only thing alt text is for.
+ */
+export const COMMUNITY_IMAGE_ALT = 'The main building of Samjona International Academy';
 
 /* ------------------------------------------------------------------------ *
  * PRIVACY & TRUST
@@ -346,39 +444,38 @@ export const COMMUNITY_LEDE =
  *
  * The four protections are all real and all implemented today. The mechanism
  * behind them is documented for the people who operate the system in
- * `docs/security.md`; here they are described by what they mean to a family.
+ * `docs/security.md`; here they are described by what they mean to a family, and
+ * none of them requires the reader to know anything about how the system is
+ * built.
  */
+export const TRUST_TITLE = 'Privacy & Trust';
+
+export const TRUST_LEDE =
+  'Our students’ information belongs to our students. These are the four ' +
+  'things that make that true here, in plain terms.';
+
 export const TRUST_POINTS: readonly Benefit[] = [
   {
     icon: 'lock',
-    title: 'Your child’s records are not public',
-    body: 'Only the school’s own staff can open them, and only the parts their job ' + 'requires.',
+    title: 'Student information is not public',
+    body: 'Only our own staff can open a student’s records, and only the parts their job requires.',
   },
   {
     icon: 'shield',
-    title: 'Everyone has their own account',
-    body:
-      'Access is issued by the school, one person at a time, so there is always ' +
-      'a clear answer to who looked at what.',
+    title: 'Accounts are issued by the school',
+    body: 'Every person has their own account, so there is always a clear answer to who saw what.',
   },
   {
     icon: 'staff',
-    title: 'Only what your job needs',
-    body:
-      'A teacher, the office, the bursar and the proprietor each see their own ' +
-      'view of the school, and no more than that.',
+    title: 'People see what their role requires',
+    body: 'A teacher, the office, the bursar and the proprietor each see their own part of the school.',
   },
   {
     icon: 'history',
-    title: 'Changes are recorded',
-    body:
-      'Important changes to student, staff and financial records are written ' +
-      'down with who made them and when, so the school can account for them.',
+    title: 'Important changes are recorded',
+    body: 'Changes to student, staff and financial records are written down, with who made them and when.',
   },
 ] as const;
-
-/** The heading for the trust section: a promise the school can be held to. */
-export const TRUST_PRINCIPLE = 'Your child’s information belongs to your child.';
 
 /* ------------------------------------------------------------------------ *
  * THE SAMJONA COMMITMENT
@@ -393,12 +490,21 @@ export const TRUST_PRINCIPLE = 'Your child’s information belongs to your child
  */
 export const BRAND_STATEMENT = 'Better Communication. Better Management. Better School Experience.';
 
-/** One paragraph under the closing statement. */
+/**
+ * One paragraph under the closing statement.
+ *
+ * First person, and that is the whole change. It used to read "SAMJONA is
+ * committed to running the school in an organised, modern and connected way" —
+ * a mission statement, the kind of sentence a company writes about its
+ * intentions. "We are committed to running our school…" is a sentence the
+ * school writes about itself, which is what the brief asks for and what a
+ * closing statement is for.
+ */
 export const BRAND_STATEMENT_BODY =
-  'SAMJONA is committed to running the school in an organised, modern and ' +
-  'connected way — so that the office is not buried in paperwork, so that a ' +
-  'teacher is not chasing information they should already have, and so that a ' +
-  'parent is never left guessing.';
+  'We are committed to running our school in an organised, modern and ' +
+  'connected way — so that our office is not buried in paperwork, our ' +
+  'teachers are not chasing information they should already have, and our ' +
+  'families are never left guessing.';
 
 /* ------------------------------------------------------------------------ *
  * ACCESS
@@ -410,6 +516,10 @@ export const BRAND_STATEMENT_BODY =
  * There is no public sign-up. Accounts are issued by the school, one at a time,
  * which is why the page says "Sign In" rather than "Get Started" and why every
  * sign-in link resolves to the same existing route.
+ *
+ * This sentence is the clearest signal on the page that SAMJONA is a working
+ * school system rather than something a stranger can start using, and it is
+ * worth more for that than for the instructions it contains.
  */
 export const ACCESS_NOTE =
   'Accounts are created and issued by the school. If you do not have one, ' +

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import { ACCESS_NOTE, BRAND_STATEMENT, BRAND_STATEMENT_BODY, SAMJONA_BRAND } from '@/lib/brand';
+import { ACCESS_NOTE, BRAND_STATEMENT, BRAND_STATEMENT_BODY } from '@/lib/brand';
 
 import { Section } from './section';
 
@@ -19,6 +19,13 @@ import { Section } from './section';
  * not offering anyone a benefit over the alternative they already have; and
  * there was nothing after the button, so the page ended by asking for something
  * instead of by saying what it stands for.
+ *
+ * The supporting paragraph is the one place on the page where a first-person
+ * plural really earns its keep. It used to open "SAMJONA is committed to running
+ * the school in an organised, modern and connected way", which is a mission
+ * statement — the register a company writes its mission statement in, and a
+ * strange thing for a school to say about itself. "We are committed to running
+ * our school…" is the same commitment said by the party that actually holds it.
  *
  * On the photograph, which is the one piece of visual design carried over from
  * that panel and is worth keeping for two reasons. It is a second, quieter use of
@@ -44,12 +51,24 @@ export function BrandStatement() {
 
         <div className="relative max-w-2xl">
           {/*
-            The eyebrow is the school's name rather than a section label. It is
-            the last line of text on the page and the point of it is that this
-            belongs to a place, not to a product.
+            The eyebrow is the name of the section, and it is the one eyebrow on
+            the page that is not a topic.
+
+            It used to be the school's full name, on the reasoning that the last
+            line of text on the page should say where this belongs. That was
+            right in spirit and wrong in execution: the footer's "On this page"
+            list links to a section called "The SAMJONA Commitment", and no such
+            words appeared anywhere on the page, so the list named a heading that
+            did not exist. A visitor clicking that link would land on a panel
+            whose title they had not been able to see on the way in.
+
+            So the panel is named for what it is, and the school's name stays
+            where it is already doing that work — the copyright at the very
+            bottom, and the closing line of the page. The brand is not weaker for
+            being said once at the end rather than twice in the last screenful.
           */}
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-            {SAMJONA_BRAND.name}
+            The SAMJONA Commitment
           </p>
 
           <h2

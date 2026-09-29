@@ -15,19 +15,42 @@ import { ACCESS_NOTE, NAV_LINKS, PAGE_SECTIONS, SAMJONA_BRAND } from '@/lib/bran
  * that is `ACCESS_NOTE`, used here from the same place the hero uses it rather
  * than retyped, so the two can never drift apart.
  *
- * The wordmark's sublabel carries the system's name rather than the tagline.
- * A footer's job is to answer "whose is this" at the bottom of the page, and
- * "School Management System" answers that better than a slogan does.
+ * The wordmark's sublabel carries the system's name rather than the tagline, so
+ * that the branding answers "whose is this" and the line underneath answers "who
+ * runs it". A footer's job is both, and separating them is what keeps the block
+ * from reading as one long repeated name.
  */
 export function SiteFooter() {
   return (
     <footer className="border-t border-border/70 bg-muted/40">
       <div className="mx-auto w-full max-w-6xl px-5 py-12 sm:px-8">
         <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+          {/*
+            Three lines, each answering a different question, and no fourth.
+
+            "SAMJONA" over "School Management System" is what the system is
+            called, and it is already on screen in the `Brand` block directly
+            above. Restating it underneath as `systemName` printed a second
+            copy of the same words — the wordmark and the full name, three
+            lines apart, saying one thing twice — so that line was removed and
+            its place taken by the two things a footer should say that nothing
+            else on the page says: whose it is, and what it stands for.
+
+            The order is deliberate and matches the page. "Samjona International
+            Academy · Sierra Leone" is the school's own name, and it comes first
+            because the footer is the last thing on the page and the last thing
+            a visitor reads should be the school's, not a product's. The tagline
+            sits under it, small, and is the only slogan in the footer; the other
+            one on the page closes the content in the statement panel far above,
+            so the two never appear in the same viewport.
+          */}
           <div className="max-w-sm">
             <Brand href="/" sublabel={SAMJONA_BRAND.product} label={`${SAMJONA_BRAND.name} home`} />
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-              {SAMJONA_BRAND.systemName}, {SAMJONA_BRAND.location}. {SAMJONA_BRAND.tagline}.
+              {SAMJONA_BRAND.name} · {SAMJONA_BRAND.location}
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              {SAMJONA_BRAND.tagline}
             </p>
           </div>
 

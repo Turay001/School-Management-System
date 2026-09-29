@@ -173,6 +173,21 @@
 }
 
 /*
+ * The Community section's photograph.
+ *
+ * A light warm grade rather than the hero's heavy one. The hero has to survive
+ * a scrim and white text on top of it, so it is pushed dark and desaturated
+ * hard; this image has no text over it and is sitting in a light section, so the
+ * same grade would make the building look grey and tired rather than sunlit.
+ *
+ * Both are derived from the same source file and the same brand teal, so the two
+ * images read as the same place photographed once and used twice.
+ */
+.communityImage {
+  filter: saturate(1.04) brightness(1.03);
+}
+
+/*
  * The hero's rule: a single hairline that widens on load. Together with
  * `.lift` below, it is the whole of this module's motion, and both are held to
  * the application's own budget: under 200ms, and off entirely under
