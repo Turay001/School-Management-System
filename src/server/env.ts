@@ -112,9 +112,27 @@ export const serverEnv = {
 };
 
 /**
- * Validate configuration at startup.
- * Returns human-readable problems rather than throwing, so a setup or health
- * page can display them all at once.
+ * Read the role (user) out of a PostgreSQL connection string.
+ * Returns null when the string cannot be parsed, so the caller can say so
+ * rather than silently treating an unparseable URL as a valid one.
+ */
+function readRole(connectionString: string): string | null {
+  try {
+    return decodeURIComponent(new URL(connectionString).username);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validate the runtime configuration.
+ * Returns human-readable problems rather than throwing, so a caller can
+ * display them all at once.
+ *
+ * SCOPE: everything here is decidable from the environment alone. It does not
+ * connect to the database, so it cannot assert anything about role membership
+ * or RLS attributes -- see the comment on the DATABASE_URL role check for where
+ * that assertion actually lives.
  */
 export function validateConfig(): string[] {
   const problems: string[] = [];
@@ -136,11 +154,31 @@ export function validateConfig(): string[] {
         'samjona_login so that RLS applies. Only payroll generation may use the service role.',
     );
   }
-  if (url && url.includes('samjona_login')) {
+
+  // The role is read out of the connection string, not searched for inside it.
+  //
+  // The previous check was `url.includes('samjona_login')`, which is true for
+  // exactly the connection string docs/deployment.md mandates -- so a correctly
+  // configured deployment always reported a finding, and the one configuration
+  // that actually matters (a login role that can also reach samjona_service)
+  // reported nothing. The check had to be inverted, because a URL is the wrong
+  // place to ask the question: whether a role can escalate to BYPASSRLS is a
+  // catalog fact (pg_roles, pg_auth_members), not a property of a string.
+  //
+  // So: assert the role name here, and leave the escalation assertion to the
+  // check that can actually make it -- `npm run db:verify-writes`, which queries
+  // pg_has_role(oid, 'samjona_service', 'MEMBER') against the live catalog.
+  const appRole = url ? readRole(url) : null;
+  if (url && appRole === null) {
     problems.push(
-      'DATABASE_URL authenticates as samjona_login. The application role must be a plain ' +
-        'member of samjona_app; if it can also SET ROLE to the service role, an injection in ' +
-        'any request handler would bypass RLS entirely.',
+      'DATABASE_URL is not a parseable PostgreSQL connection string, so the role it ' +
+        'authenticates as cannot be confirmed. Expected postgresql://<user>@<host>:6543/<db>',
+    );
+  } else if (appRole !== null && appRole !== 'samjona_login') {
+    problems.push(
+      `DATABASE_URL authenticates as "${appRole}", not samjona_login. samjona_login is a ` +
+        'plain member of samjona_app and is fully subject to RLS. Connecting as any other ' +
+        'role either bypasses the policies or breaks them outright.',
     );
   }
 

@@ -77,18 +77,31 @@ how many connections a single warm instance holds.
 
 ## Config checks at startup
 
-`validateConfig` in `src/server/env.ts` runs at boot and reports human-readable
-problems instead of dying on the first one — a setup or health page can show
-them all. It currently checks:
+`validateConfig` in `src/server/env.ts` returns human-readable problems instead
+of dying on the first one. It is exported but **not yet called from anywhere** —
+no setup or health page is wired to it — so today it is a library to be used,
+not a gate that runs on deploy. Treat its output as a pre-deploy checklist,
+surfaced however you choose.
+
+It decides only from the environment; it never connects to the database. It
+checks:
 
 - `DATABASE_URL` present; uses the pooler (6543); is not a `postgres.`/service
-  connection; does not authenticate as `samjona_login` while also being able
-  to `SET ROLE` to the service role.
+  connection; and authenticates as `samjona_login` (the role is parsed out of
+  the connection string, not searched for inside it).
 - `SERVICE_DATABASE_URL` present-or-explicitly-unset (payroll note), and if
   set, on port 6543.
 - `SUPABASE_SERVICE_ROLE_KEY` unset.
 - `AUTH_SECRET` present and ≥ 32 chars.
 - `NEXTAUTH_URL` set in production.
+
+**What it cannot check.** Whether the application role can escalate to a
+BYPASSRLS role is a catalog fact (`pg_roles`, `pg_auth_members`), not a property
+of a connection string, so no environment-only check can assert it. That
+assertion lives in `npm run db:verify-writes`, which queries
+`pg_has_role(oid, 'samjona_service', 'MEMBER')` against the live database. Run
+it on the operator machine before deploying — it is the real gate, and
+`validateConfig` is not a substitute for it.
 
 Treat a non-empty finding list as a pre-deploy checklist, not a suggestion.
 
