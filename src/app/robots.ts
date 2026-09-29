@@ -1,6 +1,7 @@
+import { headers } from 'next/headers';
 import type { MetadataRoute } from 'next';
 
-import { serverEnv } from '@/server/env';
+import { publicOrigin } from '@/lib/public-origin';
 
 /**
  * robots.txt
@@ -11,17 +12,26 @@ import { serverEnv } from '@/server/env';
  * listing the prefixes is the form that survives someone adding a route later
  * without thinking about it.
  *
- * A `sitemap` line points at `sitemap.xml`, rendered alongside this file. That
- * route reads the origin from `NEXTAUTH_URL` at request time rather than
- * hard-coding a host, so it cannot point at a guessed domain — see the note
- * there on why the repository not knowing the school's domain is not the same
- * problem as a deployment not knowing its own origin.
+ * A `sitemap` line points at `sitemap.xml`, rendered alongside this file from
+ * the same origin resolution - see `src/lib/public-origin.ts`. Both files read
+ * the origin, neither types it in, and a host written into a source file is a
+ * host that silently rots when the domain changes.
+ *
+ * The `sitemap` line is OMITTED when no origin can be resolved, because
+ * advertising a sitemap at an address that will not answer is worse than
+ * advertising no sitemap at all.
  */
-export default function robots(): MetadataRoute.Robots {
-  // Read from the deployment, never from a literal in this file. A host typed
-  // in here is a host that silently rots the moment the domain changes. See the
-  // note in sitemap.ts on why the localhost fallback is acceptable.
-  const base = serverEnv.NEXTAUTH_URL;
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const request = await headers();
+
+  // The raw variable, not `serverEnv.NEXTAUTH_URL` - that accessor substitutes
+  // `http://localhost:3000` when the variable is unset, and "unset" is
+  // precisely the case this file has to handle honestly.
+  const origin = publicOrigin({
+    configured: process.env.NEXTAUTH_URL,
+    host: request.get('host'),
+    scheme: request.get('x-forwarded-proto'),
+  });
 
   return {
     rules: [
@@ -31,6 +41,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/login', '/auth/'],
       },
     ],
-    sitemap: `${base.replace(/\/+$/, '')}/sitemap.xml`,
+    ...(origin ? { sitemap: `${origin}/sitemap.xml` } : {}),
   };
 }
