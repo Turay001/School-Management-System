@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { DEFAULT_REDIRECT_PATH, safeRedirectPath } from '@/lib/redirect-target';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +45,12 @@ export function LoginForm({ next, notice }: { next: string; notice?: string }) {
         return;
       }
 
-      router.push(next);
+      // Re-checked here, not only in the middleware: this is the call that
+      // actually navigates, and `next` reaches this component from the query
+      // string. An unvalidated value lets a link to the genuine sign-in page
+      // hand the user to an attacker's site the moment they finish typing
+      // their password. See src/lib/redirect-target.ts.
+      router.push(safeRedirectPath(next) ?? DEFAULT_REDIRECT_PATH);
       router.refresh();
     } catch {
       setError('We could not sign you in right now. Please try again in a moment.');
@@ -62,9 +68,7 @@ export function LoginForm({ next, notice }: { next: string; notice?: string }) {
         </p>
       </div>
 
-      {notice ? (
-        <Alert variant="info" title={notice} />
-      ) : null}
+      {notice ? <Alert variant="info" title={notice} /> : null}
       {error ? <Alert variant="destructive" title={error} /> : null}
 
       <div className="space-y-2">
