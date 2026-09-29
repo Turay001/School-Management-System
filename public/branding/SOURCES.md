@@ -112,8 +112,9 @@ inside an XML comment.** Referencing a CSS custom property by its own name
 introduces one, which makes the document ill-formed. An SVG that does not parse
 renders as *nothing* — there is no fallback — so the file looks fine in an
 editor and produces an invisible favicon in the browser. `og-card.svg` and
-`icon.svg` both contained this defect; it is fixed in `icon.svg`, and
-`og-card.svg` still needs the same treatment.
+`icon.svg` both contained this defect. It is now fixed in both, and each is
+verified to parse as XML. Re-check any edit with an XML parse rather than by
+eye, because the failure is silent.
 
 ## Before sharing the link outside the school
 
