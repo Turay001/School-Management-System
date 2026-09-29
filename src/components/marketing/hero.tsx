@@ -1,140 +1,144 @@
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
-import { IconCheck, IconInfo } from '@/components/icons';
-import { SAMJONA_BRAND } from '@/lib/brand';
+import { ACCESS_NOTE, HERO_POINTS, SAMJONA_BRAND } from '@/lib/brand';
 
+import { IconTile, SECTION_INNER } from './section';
 import styles from './marketing.module.css';
 
 /**
  * Hero.
  *
- * Two decisions worth stating, because both were available and rejected.
+ * The academy's own photograph, full-bleed, behind the first screen. The image
+ * treatment - which file, where it sits, and the gradient that guarantees the
+ * text stays readable - is documented where it is implemented, in
+ * `marketing.module.css`; the short version is that the photograph carries the
+ * mood and the scrim carries the contrast, and neither is asked to do the
+ * other's job.
  *
- * 1. NO PHOTOGRAPH. The repository contains no image of the school, and no
- *    image may be labelled as SAMJONA photography unless it genuinely is one.
- *    The right-hand frame is therefore an explicitly labelled slot rather than
- *    a picture of somewhere that is not this school. It is not a placeholder in
- *    the sense of "to be tidied up" - it is the correct state, made visible.
- *    `public/branding/SOURCES.md` records what belongs in it.
+ * Three decisions worth stating, because the alternatives were available.
  *
- * 2. NO INVENTED PROOF. There is no "trusted by 500 schools", no founding year,
- *    no roll size and no testimonial, because none of that is in the
- *    repository. What replaces social proof is the strongest thing that is
- *    actually true and checkable: the system refuses to guess at rules it has
- *    not been given.
+ * 1. The photograph is decorative and is hidden from assistive technology. The
+ *    hero's job is to say what SAMJONA is, and it says that in words directly
+ *    underneath. Announcing a photograph of the academy on top of that adds a
+ *    caption nobody needs.
+ * 2. Both calls to action go to `/login`. There is no public sign-up - accounts
+ *    are issued by the school - so a "Get started" button that led anywhere
+ *    else would be a dead end dressed as a conversion.
+ * 3. The header stays light and the hero sits under it, rather than the header
+ *    floating transparently over the photograph. Over a dark image the wordmark
+ *    would need a second colourway, and a second colourway for one surface is
+ *    the beginning of a brand that drifts.
  */
 export function Hero() {
   return (
-    <section className="border-b border-border/70 bg-gradient-to-b from-muted/50 to-background">
-      <div className="mx-auto w-full max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
-        <div className="grid items-center gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:gap-14">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-              {SAMJONA_BRAND.location} · {SAMJONA_BRAND.product}
-            </p>
+    <section
+      id="home"
+      aria-labelledby="home-heading"
+      className="relative isolate overflow-hidden bg-[#062229]"
+    >
+      {/*
+        Layer order, bottom to top: the photograph, then the scrim, then the
+        content. Both decorative layers are siblings rather than children of
+        the text so that neither can end up inside the accessibility tree by
+        accident, and `isolate` keeps the whole thing in one stacking context
+        so the negative z-indices cannot escape behind the page background.
+      */}
+      <div aria-hidden="true" className={`absolute inset-0 -z-20 ${styles.heroPhoto}`} />
+      <div aria-hidden="true" className={`absolute inset-0 -z-10 ${styles.heroScrim}`} />
 
-            <h1 className="mt-4 text-3xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
+      <div className={`${SECTION_INNER} relative py-16 sm:py-20 lg:py-28`}>
+        {/*
+          `max-w-2xl` is the load-bearing measurement in this component. It is
+          what keeps the text inside the darkest part of the horizontal scrim
+          on a wide screen, and it is why the paragraph never runs to more than
+          about 75 characters a line.
+        */}
+        <div className="max-w-2xl">
+          <p className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 bg-primary-foreground/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary-foreground/90">
+            {SAMJONA_BRAND.name}
+            <span aria-hidden="true" className="text-primary-foreground/45">
+              ·
+            </span>
+            {SAMJONA_BRAND.location}
+          </p>
+
+          <h1
+            id="home-heading"
+            className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl"
+          >
+            {SAMJONA_BRAND.wordmark}
+            <span className="mt-2 block text-2xl font-semibold leading-tight tracking-tight text-white/90 sm:text-3xl lg:text-4xl">
               {SAMJONA_BRAND.tagline}
-            </h1>
+            </span>
+          </h1>
 
-            <div
-              aria-hidden="true"
-              className={`mt-6 h-px w-24 origin-left bg-primary ${styles.heroRule}`}
-            />
+          <div
+            aria-hidden="true"
+            className={`mt-7 h-px w-24 origin-left bg-primary-foreground/60 ${styles.heroRule}`}
+          />
 
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-              {SAMJONA_BRAND.subline}
-            </p>
+          <p className="mt-7 text-base leading-relaxed text-white/85 sm:text-lg">
+            {SAMJONA_BRAND.subline} {SAMJONA_BRAND.summary}
+          </p>
 
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <Button asChild size="lg">
-                <Link href="/login">Sign in to the platform</Link>
-              </Button>
-              <Button asChild size="lg" variant="outline">
-                <Link href="#what-it-does">See what actually works</Link>
-              </Button>
-            </div>
-
-            <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Accounts are created by the proprietor. There is no public sign-up,
-              and this page does not ask for any personal information.
-            </p>
+          {/*
+            Stacked on a phone, side by side from `sm`. `w-full` on the smallest
+            screens is what makes both targets a full-width, thumb-sized
+            button rather than two small ones sharing a row.
+          */}
+          <div className="mt-9 flex flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <Button asChild size="lg" className="w-full sm:w-auto">
+              <Link href="/login">Get started</Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="w-full border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground sm:w-auto"
+            >
+              <Link href="/login">Login</Link>
+            </Button>
           </div>
 
-          <div>
-            {/*
-              The image slot. `aria-hidden` is not used here because the frame
-              carries information a sighted visitor needs: the school's own
-              photograph has not been supplied. The caption below states the
-              same thing in words for everyone else.
-            */}
-            <figure className="m-0">
-              <div
-                className={`flex aspect-[4/3] w-full items-center justify-center rounded-xl border border-dashed border-border ${styles.photoSlot}`}
-              >
-                <div className="max-w-[80%] text-center">
-                  <span
-                    aria-hidden="true"
-                    className="block text-4xl font-bold tracking-tight text-samjona-primary/25 sm:text-5xl"
-                  >
-                    SJ
-                  </span>
-                  <span className="mt-2 block text-sm font-medium text-muted-foreground">
-                    School photograph
-                  </span>
-                </div>
-              </div>
-              <figcaption className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                A slot for the academy’s own photograph, to be supplied by the
-                school. Nothing is shown in its place, because an unrelated image
-                captioned as this school would be a false claim.
-              </figcaption>
-            </figure>
-          </div>
+          <p className="mt-5 max-w-xl text-sm leading-relaxed text-white/70">{ACCESS_NOTE}</p>
         </div>
 
         {/*
-          The three claims under the hero are the ones worth making first,
-          because each is verifiable in the code rather than asserted here.
+          The three claims under the hero are the everyday ones - records,
+          parents, office hours - rather than the ones a build review would
+          make. They exist so the first screen answers not just "what is this"
+          but "is this for me".
+
+          The tiles sit on a flat translucent fill rather than a blur. Glass is
+          a look rather than a contrast guarantee, and on a photograph it also
+          costs a compositing layer on exactly the devices least able to spare
+          one.
         */}
-        <ul className="mt-12 grid gap-4 sm:grid-cols-3">
-          {[
-            {
-              icon: <IconCheck className="size-4" />,
-              title: 'Balances are computed, not stored',
-              body:
-                'A student’s fee balance is derived from the payment ledger every ' +
-                'time it is read, so it cannot drift from the money actually received.',
-            },
-            {
-              icon: <IconCheck className="size-4" />,
-              title: 'Access is enforced by the database',
-              body:
-                'Row-level security sits behind every table. Hiding a button is a ' +
-                'courtesy to the user, never the protection itself.',
-            },
-            {
-              icon: <IconInfo className="size-4" />,
-              title: 'Unconfirmed rules are left visible',
-              body:
-                'Where a school rule is needed and has not been supplied, the system ' +
-                'marks it and waits instead of inventing a default.',
-            },
-          ].map((item) => (
+        <ul className="mt-14 grid gap-4 sm:grid-cols-3 sm:gap-5">
+          {HERO_POINTS.map((point) => (
             <li
-              key={item.title}
-              className="rounded-lg border border-border/80 bg-card/70 p-4 shadow-sm"
+              key={point.title}
+              className="rounded-2xl border border-white/15 bg-white/[0.07] p-5"
             >
-              <span className="inline-flex size-7 items-center justify-center rounded-md bg-accent text-accent-foreground">
-                {item.icon}
-              </span>
-              <h2 className="mt-3 text-sm font-semibold text-foreground">{item.title}</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
+              <IconTile icon={point.icon} tone="on-primary" className="bg-white/[0.12]" />
+              <h2 className="mt-4 text-sm font-semibold text-white">{point.title}</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/75">{point.body}</p>
             </li>
           ))}
         </ul>
       </div>
+
+      {/*
+        A hairline of brand colour along the bottom edge. Two pixels, and the
+        only place on the page where a decorative rule is allowed to be pure
+        brand: it separates a dark section from a light one without having to
+        fake a border colour that works against both.
+      */}
+      <div
+        aria-hidden="true"
+        className="h-1 w-full bg-gradient-to-r from-primary via-primary to-samjona-highlight"
+      />
     </section>
   );
 }

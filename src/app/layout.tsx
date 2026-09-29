@@ -21,10 +21,16 @@ import { SAMJONA_BRAND } from '@/lib/brand';
  */
 const siteUrl = process.env.NEXTAUTH_URL;
 
+/**
+ * The description is the sentence a parent or a search engine reads before
+ * deciding whether this page is for them, so it is written for them. It
+ * deliberately contains no implementation language: a visitor who cannot tell
+ * what the product does for them has already gone somewhere else.
+ */
 const description =
-  'School administration, fees, payroll and results for one school. ' +
-  'Money is computed from records, access is enforced by the database, and ' +
-  'unconfirmed rules are left visible rather than guessed.';
+  'SAMJONA makes school management simpler. A single, organised place for ' +
+  'student records, staff, fees, payroll and results — with clear, practical ' +
+  'access for parents and guardians, and less paperwork for the school office.';
 
 export const metadata: Metadata = {
   title: {
@@ -41,7 +47,11 @@ export const metadata: Metadata = {
     description,
     locale: 'en_GB',
     ...(siteUrl
-      ? { images: [{ url: '/branding/og-card.svg', width: 1200, height: 630, alt: SAMJONA_BRAND.name }] }
+      ? {
+          images: [
+            { url: '/branding/og-card.svg', width: 1200, height: 630, alt: SAMJONA_BRAND.name },
+          ],
+        }
       : {}),
   },
   twitter: {

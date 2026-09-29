@@ -339,3 +339,90 @@ export function IconLeave(p: IconProps) {
     </Svg>
   );
 }
+
+/*
+ * The eight icons below were added with the public landing page, for the
+ * sections that explain SAMJONA to parents and staff rather than to a
+ * developer. They follow the same conventions as the rest of the set - 24x24,
+ * `currentColor`, 1.75 stroke - and each still sits next to a text label, so
+ * none of them carries meaning on its own.
+ */
+
+export function IconShield(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3 5 5.8v5.5c0 4.2 2.8 7.6 7 9.2 4.2-1.6 7-5 7-9.2V5.8L12 3Z" />
+      <path d="m9 12 2.2 2.2L15.5 10" />
+    </Svg>
+  );
+}
+
+export function IconLock(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+      <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
+      <path d="M12 14.2v2.4" />
+    </Svg>
+  );
+}
+
+export function IconFolder(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M3.5 6.5A1.5 1.5 0 0 1 5 5h4.2l2 2.4H19a1.5 1.5 0 0 1 1.5 1.5v9.6A1.5 1.5 0 0 1 19 20H5a1.5 1.5 0 0 1-1.5-1.5Z" />
+      <path d="M8 13h8M8 16.5h5" />
+    </Svg>
+  );
+}
+
+export function IconMessage(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M20.5 12.5c0 3.9-3.8 7-8.5 7-1 0-2-.2-2.9-.4L4 20.5l1.3-3.6A6.6 6.6 0 0 1 3.5 12.5c0-3.9 3.8-7 8.5-7s8.5 3.1 8.5 7Z" />
+      <path d="M8.5 12.5h.01M12 12.5h.01M15.5 12.5h.01" />
+    </Svg>
+  );
+}
+
+export function IconClock(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.2V12l3.2 2" />
+    </Svg>
+  );
+}
+
+export function IconHistory(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M3.8 11.2A8.5 8.5 0 1 1 4.6 16" />
+      <path d="M3.5 5.5v5.5H9" />
+      <path d="M12 7.8V12l3 1.8" />
+    </Svg>
+  );
+}
+
+export function IconSchool(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3 2.8 7.4 12 11.8l9.2-4.4L12 3Z" />
+      <path d="M6.4 9.8v6.4c0 1.7 2.5 3.1 5.6 3.1s5.6-1.4 5.6-3.1V9.8" />
+      <path d="M21.2 7.4v5" />
+    </Svg>
+  );
+}
+
+export function IconFamily(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="6.2" cy="8.4" r="2.7" />
+      <path d="M1.8 19.2c.5-2.8 2.3-4.2 4.4-4.2s3.9 1.4 4.4 4.2" />
+      <circle cx="12" cy="10.6" r="1.9" />
+      <path d="M9 19.4c.3-2 1.4-3.1 3-3.1s2.7 1.1 3 3.1" />
+      <circle cx="18" cy="7.6" r="3" />
+      <path d="M13.3 19.2c.5-3.1 2.4-4.7 4.7-4.7 1.9 0 3.4.8 4.2 2.3" />
+    </Svg>
+  );
+}

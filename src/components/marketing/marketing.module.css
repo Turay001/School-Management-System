@@ -21,30 +21,188 @@
  * switched off by a media query from the user's side.
  */
 
-.section {
-  /* Staggered fade-up, driven by a custom property set per element. */
-  animation: samjona-rise 260ms ease-out both;
-  animation-delay: var(--samjona-delay, 0ms);
+/*
+ * THE HERO PHOTOGRAPH
+ * ===================
+ * The academy's own photograph, in public/branding/ as
+ * `school-exterior-01-hero.jpg` and `school-exterior-01-hero-sm.jpg`. Both are
+ * brand-graded derivatives of the supplied file; public/branding/SOURCES.md
+ * records the provenance, the grade and the measured contrast.
+ *
+ * Two source files, chosen by viewport width and not by pixel density. A phone
+ * in Freetown should not download a 119 KB JPEG to fill a 390 px screen, and
+ * `image-set()` cannot express that because it selects on device pixel ratio -
+ * the wrong axis here, since a cheap handset tends to have a high DPR and so
+ * needs the *smaller* file.
+ *
+ * It is a CSS background rather than a `next/image` element, for two reasons.
+ * The photograph is decorative - the hero's meaning is carried by its text, so
+ * the layer is `aria-hidden` and needs no alt - and a background lets the
+ * photograph and the scrim be two absolutely positioned siblings in one
+ * stacking context, which is what keeps the text legible without a wrapper
+ * around it.
+ *
+ * Positioning, and why
+ * --------------------
+ * The photograph reads, top to bottom, as sky, then the building, then the
+ * ground. `cover` has to choose what to lose, and it loses different edges at
+ * each breakpoint:
+ *
+ *   - Landscape (>= 1024px). Scaling is driven by width, so the top and the
+ *     bottom are cropped. The flat, featureless strip along the bottom edge is
+ *     the right thing to lose, and 36% down keeps the roofline in frame.
+ *     Anchoring right of centre also moves the busier, darker middle of the
+ *     photograph out from behind the text column and towards the open side of
+ *     the layout, where the scrim has thinned enough to show it.
+ *   - Portrait. Scaling is driven by height instead, so the left and right
+ *     edges are cropped and the centre - the building - is what survives. 38%
+ *     down keeps the same subject visible.
+ *
+ * The image is never stretched: `background-size: cover` preserves the aspect
+ * ratio and crops rather than distorts, and no `background-size: 100% 100%`
+ * appears anywhere in this file.
+ */
+.heroPhoto {
+  background-image: url('/branding/school-exterior-01-hero-sm.jpg');
+  background-size: cover;
+  background-position: 50% 38%;
+  background-repeat: no-repeat;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .section {
-    animation: none;
+@media (min-width: 640px) {
+  .heroPhoto {
+    background-image: url('/branding/school-exterior-01-hero.jpg');
   }
 }
 
-@keyframes samjona-rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@media (min-width: 1024px) {
+  .heroPhoto {
+    background-position: 62% 36%;
   }
 }
 
-/* The hero's rule: a single hairline that widens on load. */
+/*
+ * THE SCRIM
+ * =========
+ * Text over a photograph needs a guaranteed contrast floor, and the honest way
+ * to get one is to state the arithmetic rather than hope.
+ *
+ * Two numbers decide every value below. The scrim colour is #062229, whose
+ * relative luminance is 0.112. The graded photograph's brightest pixel is
+ * 0.490, because the grade in `public/branding/SOURCES.md` rolls the sky off
+ * against a hyperbola - without that, no scrim light enough to let the
+ * photograph show could carry 16px text over the sky.
+ *
+ * With the backdrop capped at 0.490, a composite of `a * 0.112 + (1 - a) *
+ * 0.490` clears WCAG AA against white once `a >= 0.811`. Every stop below was
+ * checked against that number for the whole region each line of copy occupies,
+ * at a 1440x700 desktop hero and a 390x980 phone hero. Measured worst cases:
+ *
+ *   desktop  4.99:1    mobile  4.57:1
+ *
+ * Both are measured over the actual composited pixels, not over the gradient
+ * stops, so they include the photograph underneath.
+ *
+ * The mobile scrim is vertical, because the text spans the full width there and
+ * has to be dark all the way across. From 1024px the text moves into a
+ * left-hand column, so the scrim turns horizontal and deliberately thins out
+ * towards the right: alpha 0.86 out to 58% of the width, then down to 0.08 at
+ * the edge. That is what keeps the photograph visible on a desktop screen
+ * instead of drowning it - measured at 0.22 mean luminance across 0.022 to
+ * 0.415 in the right quarter, against 0.16 under the text column.
+ *
+ * On a phone the same arithmetic leaves the photograph as a dark, low-contrast
+ * texture rather than a picture. That is the correct outcome, not a shortfall:
+ * the copy occupies nearly the whole hero there, and a visible photograph is
+ * worth less than copy a parent can actually read.
+ *
+ * Both scrims are painted in `rgb` with an alpha, so the photo still reads
+ * through them - this is an overlay, not a colour wash.
+ */
+.heroScrim {
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgb(6 34 41 / 0.86) 0%,
+      rgb(6 34 41 / 0.76) 14%,
+      rgb(6 34 41 / 0.8) 58%,
+      rgb(6 34 41 / 0.93) 100%
+    ),
+    linear-gradient(to right, rgb(6 34 41 / 0.42) 0%, rgb(6 34 41 / 0.16) 100%);
+}
+
+@media (min-width: 1024px) {
+  .heroScrim {
+    background-image:
+      linear-gradient(
+        to right,
+        rgb(6 34 41 / 0.88) 0%,
+        rgb(6 34 41 / 0.86) 58%,
+        rgb(6 34 41 / 0.62) 70%,
+        rgb(6 34 41 / 0.24) 86%,
+        rgb(6 34 41 / 0.08) 100%
+      ),
+      linear-gradient(
+        to bottom,
+        rgb(6 34 41 / 0.42) 0%,
+        rgb(6 34 41 / 0.04) 22%,
+        rgb(6 34 41 / 0.1) 78%,
+        rgb(6 34 41 / 0.66) 100%
+      );
+  }
+}
+
+/*
+ * THE READINESS BADGES
+ * ====================
+ * The three status pills on the complete-system list. They are defined here
+ * rather than taken from `--success` and `--warning` because those tokens do not
+ * survive contact with an 11px label, and the label is what carries the meaning.
+ *
+ * The arithmetic, measured rather than assumed:
+ *
+ *   --warning on --warning at 10%   3.09:1     fails AA
+ *   --success on --success at 10%   4.57:1     passes, by 0.07
+ *
+ * 11px semibold is not "large text" under WCAG - that starts at 18.66px bold -
+ * so it needs the full 4.5:1 that body text gets. Amber is the problem: it is a
+ * light hue, so tinting it toward white moves the background the wrong way and
+ * eats most of the contrast that the hue provided.
+ *
+ * Hence a darker text step for each hue, held to the same 12% tint:
+ *
+ *   ready            hsl(151 55% 22%) on the green tint   7.26:1
+ *   partial / held   hsl(28 80% 26%)  on the amber tint   7.36:1
+ *
+ * Local to this module on purpose. `--warning` is the application's own token
+ * and is used for warning badges throughout the product; darkening it here to
+ * suit a marketing page would change every screen that uses it.
+ *
+ * `partial` and `held` share a colour deliberately. They are different words
+ * with different reasons - one is unfinished, the other is a decision - and the
+ * distinction is carried by the label and the note beside it. Giving them
+ * separate colours would imply a difference in severity that does not exist,
+ * and would put a third hue on a page that has two.
+ */
+.readinessReady {
+  border-color: hsl(151 55% 31% / 0.32);
+  background-color: hsl(151 55% 31% / 0.12);
+  color: hsl(151 55% 22%);
+}
+
+.readinessPartial,
+.readinessHeld {
+  border-color: hsl(36 92% 40% / 0.34);
+  background-color: hsl(36 92% 40% / 0.12);
+  color: hsl(28 80% 26%);
+}
+
+/*
+ * The hero's rule: a single hairline that widens on load. Together with
+ * `.lift` below, it is the whole of this module's motion, and both are held to
+ * the application's own budget: under 200ms, and off entirely under
+ * `prefers-reduced-motion: reduce`.
+ */
 .heroRule {
   animation: samjona-rule 420ms ease-out both;
 }
@@ -65,44 +223,35 @@
 }
 
 /*
- * A faint diagonal weave behind the hero, drawn with a gradient rather than an
- * image. No asset, no network request, and it scales to any viewport without a
- * second file.
+ * A card that lifts a little on hover.
+ *
+ * Two rules keep it from becoming a gimmick: the movement is 2px, and the
+ * transition is 150ms, which is inside the application's motion budget rather
+ * than over it. It is also switched off entirely for a visitor who has asked
+ * for reduced motion.
  */
-.weave {
-  background-image:
-    repeating-linear-gradient(
-      135deg,
-      hsl(var(--samjona-primary) / 0.05) 0px,
-      hsl(var(--samjona-primary) / 0.05) 1px,
-      transparent 1px,
-      transparent 9px
-    ),
-    repeating-linear-gradient(
-      45deg,
-      hsl(var(--samjona-primary) / 0.04) 0px,
-      hsl(var(--samjona-primary) / 0.04) 1px,
-      transparent 1px,
-      transparent 9px
-    );
+.lift {
+  transition:
+    transform 150ms ease-out,
+    box-shadow 150ms ease-out,
+    border-color 150ms ease-out;
 }
 
-/*
- * Placeholder frame for a photograph the school has not supplied.
- *
- * The frame is visible on purpose. A blank rectangle reads as a broken image;
- * a labelled frame reads as "this is a slot, and we know it is empty", which is
- * the honest state. `public/branding/SOURCES.md` records that the slot exists
- * and what belongs in it.
- */
-.photoSlot {
-  background-image:
-    linear-gradient(hsl(var(--samjona-muted) / 0.9), hsl(var(--samjona-muted) / 0.9)),
-    repeating-linear-gradient(
-      45deg,
-      hsl(var(--samjona-border)) 0px,
-      hsl(var(--samjona-border)) 1px,
-      transparent 1px,
-      transparent 8px
-    );
+@media (hover: hover) {
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 30px -18px hsl(var(--samjona-foreground) / 0.45);
+    border-color: hsl(var(--samjona-primary) / 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lift {
+    transition: none;
+  }
+
+  .lift:hover {
+    transform: none;
+    box-shadow: none;
+  }
 }

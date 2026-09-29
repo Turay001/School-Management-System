@@ -13,13 +13,14 @@ though it were.
 
 ## Current assets
 
-| File | What it is | Origin | Status |
-| --- | --- | --- | --- |
-| `public/branding/og-card.svg` | Open Graph preview card, 1200×630 | Drawn here as SVG from the brand tokens | Placeholder — see "Before sharing the link" |
-| `src/app/favicon.ico` | Favicon at `/favicon.ico`, 16/32/48 px | **Generated from `src/app/icon.svg`** — never drawn separately | Final unless the school supplies a logo |
-| `src/app/icon.svg` | Favicon at `/icon.svg`, vector | Drawn here from the brand tokens | Final unless the school supplies a logo |
-| Hero frame (`components/marketing/hero.tsx`) | A labelled empty frame | CSS gradient, no asset | **Awaiting the school's own photograph** |
-| Section weave (`marketing.module.css`) | Faint diagonal texture | CSS gradient, no asset | Final |
+| File                                             | What it is                                | Origin                                                         | Status                                      |
+| ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------- | ------------------------------------------- |
+| `public/branding/og-card.svg`                    | Open Graph preview card, 1200×630         | Drawn here as SVG from the brand tokens                        | Placeholder — see "Before sharing the link" |
+| `src/app/favicon.ico`                            | Favicon at `/favicon.ico`, 16/32/48 px    | **Generated from `src/app/icon.svg`** — never drawn separately | Final unless the school supplies a logo     |
+| `src/app/icon.svg`                               | Favicon at `/icon.svg`, vector            | Drawn here from the brand tokens                               | Final unless the school supplies a logo     |
+| `public/branding/school-exterior-01.jpg`         | **The academy's own photograph.** 493×405 | Supplied by the school                                         | Archive copy — the ungraded source of truth |
+| `public/branding/school-exterior-01-hero.jpg`    | Hero backdrop, 1600×1314                  | Graded from the row above, for viewport width ≥ 640 px         | Derived — see "The hero grade" below        |
+| `public/branding/school-exterior-01-hero-sm.jpg` | Hero backdrop, 900×739                    | Graded from the row above, for viewport width < 640 px         | Derived — see "The hero grade" below        |
 
 There is no `next/image` usage anywhere in the application, `next.config.ts`
 declares no `images.remotePatterns`, and no image is fetched from a third party
@@ -30,34 +31,87 @@ directory.
 
 None of these exist in the repository, so none are on the page:
 
-- A photograph of the academy, its staff, its students or its premises
 - An official logo, crest, badge or wordmark artwork
 - The school's official colours
 - A map, satellite image or aerial photograph of the site
 - Portraits of any named individual, staff or student
 - Screenshots of the running application
+- Photography of students, staff, or the interior of the school
 
-Each of these is a real gap rather than an oversight, and each stays a gap
-until the school supplies it. The substitutes used in their place are: a
-labelled frame for the photograph, a letter monogram for the logo, the existing
-design tokens for the colours, and generated SVG for the preview card.
+Each of the first five is a real gap rather than an oversight, and each stays a
+gap until the school supplies it. The substitutes used in their place are: a
+letter monogram for the logo, the existing design tokens for the colours, and
+generated SVG for the preview card.
 
-## How to add a real photograph
+The sixth is a different kind of decision, and it is the school's to make rather
+than this repository's: photographs of identifiable children need the school's
+own consent, so none are on the page until that consent exists. It should not
+be read as a gap waiting to be filled by whoever implements it next.
 
-1. Drop the file into `public/branding/`. Use `school-exterior-01.jpg`,
-   `campus-02.jpg` and so on — a date or sequence number means a later
-   replacement is obvious in the diff.
-2. Add a row to the table above recording: file, what it shows, who supplied
-   it, and when.
-3. Replace the labelled frame in `src/components/marketing/hero.tsx` with a
-   `next/image` reference and **delete the caption explaining that the slot is
-   empty**. Leaving it would be an inaccurate caption.
-4. Write a specific `alt` describing what is in the picture, for a visitor who
-   cannot see it. "Students in the academy courtyard" is useful. "School" is
-   not.
+## The hero photograph
 
-Photographs of identifiable children need the school's own consent. That is the
-school's decision to make and document, not this repository's.
+The hero uses the academy's own photograph, so the provenance question this file
+usually has to police is settled: it is genuine SAMJONA imagery and needs no
+caption explaining that it stands in for something else. Two implementation
+details are worth recording.
+
+**It is a CSS background, not `next/image`.** The hero's meaning is carried by
+its words — the wordmark, the tagline, one supporting sentence — so the
+photograph is decorative and is `aria-hidden`, which means it takes no `alt`
+attribute at all. Using `next/image` would mean writing an alt for an image
+nobody needs described, wrapping it to keep it sized, and paying for a runtime
+optimisation pass on a file that is already fixed at the right size. The URL
+lives in the compiled stylesheet rather than in the markup, which costs a
+little first paint; the small variant is 50 KB, so the cost is one small
+request.
+
+**Two files, chosen by viewport width and not by pixel density.** A phone in
+Freetown should not download a 119 KB JPEG to fill a 390 px screen.
+`image-set()` cannot express that, because it selects on device pixel ratio —
+the wrong axis, since a cheap handset tends to have a high DPR and therefore
+needs the _smaller_ file. See `.heroPhoto` in
+`src/components/marketing/marketing.module.css`.
+
+### The hero grade
+
+The two `-hero` files are derived from `school-exterior-01.jpg`, and the
+derivation is part of the design rather than a convenience. The supplied
+photograph is 493×405 — too small to sit behind a wide hero unprocessed — and
+its sky is the only near-white region in the frame, which is exactly the part a
+scrim cannot rescue without drowning the rest of the picture.
+
+The grade, in order:
+
+1. **Lanczos resize** to 1600 px and 900 px wide. A downscale at the desktop
+   size, a slight upscale at the phone size. Aspect ratio is preserved
+   throughout; nothing is stretched.
+2. **Saturation to 0.72**, so the photograph sits beside the brand palette
+   rather than competing with it.
+3. **Soft-light toward `#10454f`** at 0.7 opacity — the literal value in
+   `src/app/icon.svg`. Soft-light preserves the luminance relationships, so the
+   building stays lighter than the sky and the result reads as light rather than
+   as a coloured wash.
+4. **A highlight rolloff**: a hyperbola above a knee at 0.42, so values below
+   the knee are untouched and values above it are compressed asymptotically.
+   This is the step that makes the hero possible at all — it caps the
+   photograph's brightest pixel at 0.490 relative luminance.
+5. **A 0.86 gain and a 1.15 px blur.** The blur is applied after the resize, so
+   the result reads as photographic depth of field rather than as a stretched
+   thumbnail.
+6. **JPEG at q78, 4:2:0, mozjpeg.**
+
+Because the brightest pixel is capped at 0.490, a composite of
+`a * 0.112 + (1 - a) * 0.490` clears WCAG AA against white once the scrim's
+alpha reaches 0.811. Every scrim stop in `marketing.module.css` was checked
+against that, measured over the actual composited pixels rather than over the
+gradient values. Measured worst cases: **4.99:1** for a 1440×700 desktop hero,
+**4.57:1** for a 390×980 phone hero.
+
+These parameters are recorded so the grade can be reproduced or re-tuned. The
+generator script is deliberately not committed: `sharp` is a transitive
+dependency of Next.js rather than a declared one, so a checked-in script
+depending on it would break on the next install that resolves a different tree.
+Re-run the grade from the settings above if the source photograph is replaced.
 
 ## How to add the official logo
 
@@ -110,7 +164,7 @@ itself, so the container is assembled by hand.
 A single caution for anyone editing these SVGs: **a double hyphen may not appear
 inside an XML comment.** Referencing a CSS custom property by its own name
 introduces one, which makes the document ill-formed. An SVG that does not parse
-renders as *nothing* — there is no fallback — so the file looks fine in an
+renders as _nothing_ — there is no fallback — so the file looks fine in an
 editor and produces an invisible favicon in the browser. `og-card.svg` and
 `icon.svg` both contained this defect. It is now fixed in both, and each is
 verified to parse as XML. Re-check any edit with an XML parse rather than by
