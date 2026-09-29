@@ -10,7 +10,13 @@
     designed card, and an editable source is more useful than a flattened
     placeholder PNG. See public/branding/SOURCES.md.
 
-    Colours are copied from src/app/globals.css (--primary / --background).
+    Colours are copied from the primary and background tokens in
+    src/app/globals.css.
+
+    A double hyphen may not appear inside an XML comment. Naming those CSS
+    custom properties directly put their two-hyphen form here, which is a
+    well-formedness error: an SVG that does not parse renders as nothing
+    rather than failing visibly. The tokens are referred to by name in prose.
   -->
   <defs>
     <pattern id="weave" width="18" height="18" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
