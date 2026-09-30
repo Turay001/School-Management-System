@@ -134,6 +134,30 @@ deliberate act with accountability; do them from the application as the
 Proprietor (they are recorded in the audit log) or with the appropriate user
 administrator.
 
+### Removing an account
+
+**Deactivate, do not delete.**
+
+```sql
+update app_users set status = 'inactive' where username = '<username>';
+```
+
+An account that has signed in cannot usually be deleted, and the refusal is
+deliberate. Once someone has approved an expense, a leave request or a payroll
+run, that record must keep naming a real approver — an exported payroll run is a
+financial record, and blanking the approver would leave it unattributable.
+Deleting such an account fails with a foreign-key violation naming the table and
+column, e.g. `payroll_runs_approved_by_fkey`.
+
+An account that has **no** such record can be deleted outright, and should be.
+Its audit rows are kept: `audit_logs.actor_name` is written at the time of the
+event precisely so the trail stays readable after the account is gone.
+
+Deleting a Supabase login while an `app_users` row still exists is also refused
+(`app_users_id_fkey` is RESTRICT). Deactivate or remove the application profile
+first, so the removal is deliberate rather than a side effect of deleting a
+login in the dashboard.
+
 ## 6. Sign in
 
 ```
