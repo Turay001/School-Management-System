@@ -90,11 +90,18 @@ describe('the only visitor who belongs at the sign-in page', () => {
 describe('signed in, but not a usable application identity', () => {
   // Each of these is the loop-forming case: the middleware WILL bounce them off
   // /login and back to /dashboard, so /login must never be chosen here.
+  //
+  // `unavailable` is in this list because a failed profile lookup is also a
+  // visitor holding a valid session. Folding it into `anonymous` is what closed
+  // the loop a second way.
   const loopForming = [
     ['unprovisioned', { status: 'unprovisioned', authUserId: AUTH_USER_ID }],
     ['inactive', { status: 'inactive', authUserId: AUTH_USER_ID }],
     ['invalid_role', { status: 'invalid_role', authUserId: AUTH_USER_ID, role: 'wizard' }],
-    ['bootstrap failure reported as unusable', { status: 'inactive', authUserId: AUTH_USER_ID }],
+    [
+      'database-unreachable',
+      { status: 'unavailable', authUserId: AUTH_USER_ID, detail: 'ECONNREFUSED' },
+    ],
   ] as const;
 
   for (const [label, resolution] of loopForming) {

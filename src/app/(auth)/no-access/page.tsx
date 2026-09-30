@@ -78,7 +78,7 @@ export default async function NoAccessPage() {
   );
 }
 
-/** The three unusable-but-signed-in states, each with its own remedy. */
+/** The unusable-but-signed-in states, each with its own remedy. */
 type BlockedResolution = Exclude<
   Awaited<ReturnType<typeof resolveSessionUser>>,
   { status: 'ok' } | { status: 'anonymous' }
@@ -121,6 +121,40 @@ function explain(resolution: BlockedResolution) {
         description:
           'Your sign-in works, but the application account attached to it has been disabled. Ask the Proprietor to reactivate it.',
         children: null,
+      };
+
+    case 'unavailable':
+      return {
+        title: 'The system cannot reach the school database',
+        description:
+          'This is not a problem with your account. The server could not read your profile, so it cannot tell whether you have one. Nothing here needs to be changed on your side - the database connection has to work first.',
+        children: (
+          <Alert variant="warning" title="For whoever is administering the deployment">
+            <p>
+              The profile lookup failed before any row was read. Check, in order:
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <code>DATABASE_URL</code> is set and points at the transaction pooler (port 6543).
+              </li>
+              <li>The Supabase project is reachable from this machine or deployment.</li>
+              <li>
+                The connection pool is not exhausted (Supabase caps concurrent connections).
+              </li>
+            </ul>
+            <p className="mt-2">
+              The server log line{' '}
+              <code>[auth] session bootstrap failed</code> carries the detail
+              {resolution.correlationId ? (
+                <>
+                  {' '}
+                  and the correlation id <code>{resolution.correlationId}</code>
+                </>
+              ) : null}
+              .
+            </p>
+          </Alert>
+        ),
       };
 
     case 'invalid_role':

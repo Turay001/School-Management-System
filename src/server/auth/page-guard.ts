@@ -43,5 +43,9 @@ export async function requireAppUser(): Promise<AuthenticatedUser> {
 
   if (resolution.status === 'anonymous') redirect('/login');
 
+  // Everything else - unprovisioned, inactive, invalid_role, unavailable - is a
+  // visitor who HOLDS a session. All four land on /no-access, which resolves
+  // the reason again and says which one it is. Sending any of them to /login
+  // is what closes the loop.
   redirect('/no-access');
 }

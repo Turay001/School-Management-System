@@ -68,6 +68,19 @@ export type SessionResolution =
   | { status: 'unprovisioned'; authUserId: string }
   /** Authenticated and provisioned, but the account is not `active`. */
   | { status: 'inactive'; authUserId: string }
+  /**
+   * The profile lookup itself failed - the database was unreachable, the pool
+   * timed out, the query was refused. NOTHING is known about the account.
+   *
+   * This is deliberately NOT folded into `inactive`. Reporting a connectivity
+   * failure as "your account has been disabled" sends the reader to the
+   * Proprietor to fix an account that is perfectly fine, and there is no
+   * symptom at all for them to fix - the real fault is a missing or wrong
+   * DATABASE_URL, an unreachable host, or an exhausted pool. It was also the
+   * reason a visitor could see "ask the Proprietor to reactivate it" for an
+   * account that had never existed.
+   */
+  | { status: 'unavailable'; authUserId: string; detail: string; correlationId?: string }
   /** Provisioned, but the stored role is not one the application knows. */
   | { status: 'invalid_role'; authUserId: string; role: string }
   /** Fully usable application identity. */
@@ -108,12 +121,25 @@ export async function resolveSessionUser(): Promise<SessionResolution> {
       return rows[0] ?? null;
     });
   } catch (err) {
-    // A database or connectivity failure is NOT "not signed in". Reporting it
-    // as `anonymous` is what sends a perfectly valid session to /login, where
-    // the middleware bounces it straight back here. Treat it like the other
-    // "cannot serve the application" states instead, so the loop cannot form.
-    console.error('[auth] session bootstrap failed', err instanceof Error ? err.message : err);
-    return { status: 'inactive', authUserId: user.id };
+    // A database or connectivity failure is NOT "not signed in" and NOT "your
+    // account is disabled". Reporting it as `anonymous` is what sends a
+    // perfectly valid session to /login, where the middleware bounces it
+    // straight back here - the redirect loop. Reporting it as `inactive` is
+    // less explosive but just as wrong: it tells the reader their account has
+    // been disabled when in fact nothing is known about it, and the fault is
+    // the database connection. `unavailable` says what is actually true and
+    // keeps the loop closed on the way.
+    const detail = err instanceof Error ? err.message : String(err);
+    const correlationId =
+      typeof (err as { correlationId?: unknown })?.correlationId === 'string'
+        ? (err as { correlationId: string }).correlationId
+        : undefined;
+    console.error('[auth] session bootstrap failed - could not read the profile', {
+      authUserId: user.id,
+      correlationId,
+      detail,
+    });
+    return { status: 'unavailable', authUserId: user.id, detail, correlationId };
   }
 
   if (!profile) {
