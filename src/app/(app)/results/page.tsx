@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getAcademicOptions, listAssessments } from '@/server/portal/results';
 import { formatDate } from '@/lib/format';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -30,8 +29,7 @@ export default async function ResultsPage({
 }: {
   searchParams: Promise<{ classId?: string; subjectId?: string; termId?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['results:read'])) {
     return (

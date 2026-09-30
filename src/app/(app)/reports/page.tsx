@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import {
   getClassFeeReport,
   getExpenseCategoryReport,
@@ -47,8 +45,7 @@ const EMPLOYEE_STATUS_LABELS: Record<string, string> = {
  * all. Nothing on this page writes or caches a number.
  */
 export default async function ReportsPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'reports:read')) {
     return (

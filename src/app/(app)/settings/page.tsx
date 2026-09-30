@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listAuditEntries, listSettings, type AuditEntryRow, type SettingRow } from '@/server/portal/settings';
 import { formatDateTime } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -75,8 +73,7 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<{ entityType?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['settings:manage', 'users:manage', 'audit:read'])) {
     return (

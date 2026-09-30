@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listFeeStudents, listFeesTerms } from '@/server/portal/fees';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +11,7 @@ import { AdjustmentForm } from '@/components/fees/adjustment-form';
  * way to change a balance other than a payment and demand a written reason.
  */
 export default async function AdjustBalancePage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'fees:adjust')) {
     return (

@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listSubjects } from '@/server/portal/results';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,8 +22,7 @@ import { SubjectsForm } from '@/components/subjects/subjects-form';
  * can never be polluted by accidental entries from the classroom.
  */
 export default async function SubjectsPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'subjects:manage')) {
     return (

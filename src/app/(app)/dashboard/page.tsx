@@ -1,6 +1,4 @@
-import { redirect } from 'next/navigation';
-
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import AdminDashboard from '@/components/dashboard/admin-dashboard';
 import TeacherDashboard from '@/components/dashboard/teacher-dashboard';
 import PrincipalDashboard from '@/components/dashboard/principal-dashboard';
@@ -23,8 +21,7 @@ import BursarDashboard from '@/components/dashboard/bursar-dashboard';
  * underlying services and database enforce every permission independently.
  */
 export default async function DashboardPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   switch (user.role) {
     case 'teacher':

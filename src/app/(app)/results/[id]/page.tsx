@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getAssessmentDetail } from '@/server/portal/results';
 import { formatDate } from '@/lib/format';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -25,8 +24,7 @@ import { MarksEditor } from '@/components/results/marks-editor';
  * marks here (grid or CSV upload); other roles see a read-only mark list.
  */
 export default async function AssessmentPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['results:read'])) {
     return (

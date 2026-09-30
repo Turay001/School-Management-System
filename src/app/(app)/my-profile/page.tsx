@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getMyProfile } from '@/server/portal/staff';
 import { formatMoney } from '@/lib/money';
 import { formatDate } from '@/lib/format';
@@ -29,8 +28,7 @@ import { IconBank, IconCalendar, IconUser } from '@/components/icons';
  * explanation instead of a broken page.
  */
 export default async function MyProfilePage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['employees:read', 'employees:read_own'])) {
     return (

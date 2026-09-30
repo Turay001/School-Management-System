@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import {
   getFeeArrears,
   getMyAttention,
@@ -36,8 +35,7 @@ interface AttentionItem {
  * module, so a role sees only the work it is allowed to do or inspect.
  */
 export default async function NotificationsPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['employees:read', 'employees:read_own'])) {
     return (

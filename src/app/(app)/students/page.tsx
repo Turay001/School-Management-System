@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listClasses, listStudents } from '@/server/portal/students';
 import type { StudentStatus } from '@/lib/student-statuses';
 import { formatDate } from '@/lib/format';
@@ -27,8 +26,7 @@ export default async function StudentsPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string; classId?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['students:read', 'students:read_own_class'])) {
     return (

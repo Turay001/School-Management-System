@@ -1,6 +1,4 @@
-import { redirect } from 'next/navigation';
-
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getConfig } from '@/server/config';
 import { AppShell } from '@/components/layout/app-shell';
 
@@ -27,8 +25,11 @@ import { AppShell } from '@/components/layout/app-shell';
 export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  // Only a genuinely anonymous visitor is sent to /login. A visitor holding a
+  // session that is not a usable application identity is sent to /no-access,
+  // because /login redirects an authenticated visitor straight back here and
+  // the two together are a redirect loop. See src/server/auth/page-guard.ts.
+  const user = await requireAppUser();
 
   // Module feature flags shape the navigation surface (e.g. Leave is hidden
   // when the school switches the module off). Routes remain permission-gated

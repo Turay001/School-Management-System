@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getReportCardOptions, getStudentReportCard } from '@/server/portal/results';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
@@ -31,8 +30,7 @@ export default async function StudentReportCardPage({
   params: Promise<{ studentId: string }>;
   searchParams: Promise<{ termId?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['reportcards:read'])) {
     return (

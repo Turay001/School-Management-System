@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listClasses } from '@/server/portal/students';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +11,7 @@ import { StudentForm } from '@/components/students/student-form';
  * in the sidebar for other roles, but a typed URL must still be refused.
  */
 export default async function NewStudentPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'students:write')) {
     return (

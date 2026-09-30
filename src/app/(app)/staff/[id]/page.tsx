@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { canViewSalaries, getStaffDetail } from '@/server/portal/staff';
 import { NotFoundError } from '@/lib/errors';
 import { formatMoney } from '@/lib/money';
@@ -29,8 +28,7 @@ export default async function StaffProfilePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['employees:read', 'employees:read_own'])) {
     return (

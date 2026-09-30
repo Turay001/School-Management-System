@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getAcademicOptions } from '@/server/portal/results';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,8 +13,7 @@ import { AssessmentForm } from '@/components/results/assessment-form';
  * of 100 both work.
  */
 export default async function NewAssessmentPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'results:record')) {
     return (

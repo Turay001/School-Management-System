@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getStudentDetail } from '@/server/portal/students';
 import { NotFoundError } from '@/lib/errors';
 import { formatDate } from '@/lib/format';
@@ -28,8 +26,7 @@ export default async function StudentProfilePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['students:read', 'students:read_own_class'])) {
     return (

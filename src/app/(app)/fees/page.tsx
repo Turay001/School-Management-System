@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getClassOutstanding, getFeeOverview, listFeesTerms } from '@/server/portal/fees';
 import type { FeeBalanceRow } from '@/server/portal/fees';
 import { formatMoney, formatMoneyCompact } from '@/lib/money';
@@ -28,8 +27,7 @@ export default async function FeesPage({
 }: {
   searchParams: Promise<{ q?: string; termId?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'fees:read')) {
     return (

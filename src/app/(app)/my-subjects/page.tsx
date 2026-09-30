@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getTeacherDashboardData } from '@/server/portal/dashboard';
 import { Button } from '@/components/ui/button';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -23,8 +22,7 @@ import { IconArrowRight, IconSubjects } from '@/components/icons';
  * the query reads no financial data.
  */
 export default async function MySubjectsPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (user.role !== 'teacher' || !canAny(user, ['students:read_own_class'])) {
     return (

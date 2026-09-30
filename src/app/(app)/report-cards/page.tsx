@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getClassReportCard, getReportCardOptions } from '@/server/portal/results';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,8 +31,7 @@ export default async function ReportCardsPage({
 }: {
   searchParams: Promise<{ classId?: string; termId?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['reportcards:read'])) {
     return (

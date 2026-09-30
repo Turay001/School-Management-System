@@ -1,6 +1,6 @@
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { sectionLabelForPathname } from '@/components/layout/navigation';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,8 +20,7 @@ export default async function ModulePlaceholder({
 }: {
   params: Promise<{ slug: string[] }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   const { slug } = await params;
   const pathname = `/${slug.join('/')}`;

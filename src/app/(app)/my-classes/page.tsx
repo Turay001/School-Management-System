@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getTeacherDashboardData } from '@/server/portal/dashboard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,8 +28,7 @@ import {
  * `classes.teacher_id` inside `withUserContext` and reads no financial data.
  */
 export default async function MyClassesPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (user.role !== 'teacher' || !canAny(user, ['students:read_own_class'])) {
     return (

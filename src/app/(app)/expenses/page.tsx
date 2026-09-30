@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listExpenseCategories, listExpenses } from '@/server/portal/expenses';
 import { formatDateTime } from '@/lib/format';
 import { formatMoney } from '@/lib/money';
@@ -27,8 +26,7 @@ export default async function ExpensesPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string; categoryId?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['expenses:read'])) {
     return (

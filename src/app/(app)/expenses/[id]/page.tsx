@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getExpenseDetail } from '@/server/portal/expenses';
 import { NotFoundError } from '@/lib/errors';
 import { formatDateTime } from '@/lib/format';
@@ -33,8 +31,7 @@ export default async function ExpenseDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['expenses:read'])) {
     return (

@@ -97,6 +97,10 @@ describe('the public list is exact, not a prefix or extension rule', () => {
     '/sitemaps.xml',
     '/secret.xml',
     '/backup.txt',
+    // /no-access is a real screen, not a static asset, but it must NOT be
+    // public: an anonymous visitor sent there instead of to /login would see a
+    // "your account has no application account" page with no session at all.
+    '/no-access',
   ]) {
     it(`keeps ${path} behind authentication`, async () => {
       const response = await run(path);
@@ -139,6 +143,16 @@ describe('an authenticated user', () => {
 
   it('is sent from /login to the dashboard by default', async () => {
     expect(redirectTarget(await run('/login')).pathname).toBe('/dashboard');
+  });
+
+  it('can reach /no-access, where the (app) guard sends an unusable identity', async () => {
+    // The other half of the redirect loop. This middleware redirects an
+    // authenticated visitor OFF /login (asserted just above), so the (app)
+    // guard must send a visitor who is signed in but not provisioned somewhere
+    // that is not /login - /no-access. Guarding /no-access here as well would
+    // close the cycle from this side and restore the blank dashboard, so the
+    // path has to stay reachable.
+    expect(isPassThrough(await run('/no-access'))).toBe(true);
   });
 
   it('is returned to the page it asked for', async () => {

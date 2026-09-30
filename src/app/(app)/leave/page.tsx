@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getMyLeaveSummary, listLeaveRequests } from '@/server/portal/leave';
 import { formatDate } from '@/lib/format';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -33,8 +32,7 @@ export default async function LeavePage({
 }: {
   searchParams: Promise<{ status?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['leave:read_own', 'leave:approve'])) {
     return (

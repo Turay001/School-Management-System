@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getGeneratePreview } from '@/server/portal/payroll';
 import { formatMoney } from '@/lib/money';
 import { Alert } from '@/components/ui/alert';
@@ -25,8 +23,7 @@ export default async function GeneratePayrollPage({
 }: {
   searchParams: Promise<{ year?: string; month?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'payroll:generate')) {
     return (

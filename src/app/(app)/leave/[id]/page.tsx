@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can, canAny } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { getLeaveRequest } from '@/server/portal/leave';
 import { NotFoundError } from '@/lib/errors';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -19,8 +17,7 @@ import { LeaveActions } from '@/components/leave/leave-actions';
  * an approver who is not the requester can approve or reject it.
  */
 export default async function LeaveDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!canAny(user, ['leave:read_own', 'leave:approve'])) {
     return (

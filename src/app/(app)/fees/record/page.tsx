@@ -1,7 +1,5 @@
-import { redirect } from 'next/navigation';
-
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listFeeStudents, listFeesTerms } from '@/server/portal/fees';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,8 +11,7 @@ import { RecordPaymentForm } from '@/components/fees/record-payment-form';
  * the sidebar for other roles, but a typed URL must still be refused.
  */
 export default async function RecordFeePaymentPage() {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'fees:record')) {
     return (

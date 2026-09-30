@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 import { can } from '@/server/auth/permissions';
-import { getSessionUser } from '@/server/auth/bootstrap';
+import { requireAppUser } from '@/server/auth/page-guard';
 import { listPayrollRuns } from '@/server/portal/payroll';
 import { formatMoney } from '@/lib/money';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -26,8 +25,7 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string }>;
 }) {
-  const user = await getSessionUser();
-  if (!user) redirect('/login');
+  const user = await requireAppUser();
 
   if (!can(user, 'payroll:read')) {
     return (
