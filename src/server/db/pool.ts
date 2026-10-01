@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { Pool, types, type PoolClient, type QueryResultRow } from 'pg';
+import { withConnectionRetry } from './retry';
 
 /**
  * bigint (OID 20) is the type used for every monetary amount.
@@ -141,8 +142,29 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const result = await getPool().query<T>(text, params as never[]);
-  return result.rows;
+  // The connection is acquired explicitly rather than via `pool.query()` so
+  // that the retry boundary sits around acquisition ONLY. pool.query() hides
+  // where the connection is opened, and a retry wrapped around it would also
+  // cover the statement - which, if the socket dies mid-flight, might already
+  // have been applied. See the note at the top of retry.ts.
+  const client = await withConnectionRetry('query', () => getPool().connect(), {
+    onRetry: ({ attempt, error, delayMs }) => {
+      console.warn('[db] retrying connection', {
+        attempt,
+        delayMs,
+        code: (error as { code?: string }).code,
+        message: (error as Error).message,
+      });
+    },
+  });
+
+  try {
+    // Outside the retry: this runs exactly once whatever happens to it.
+    const result = await client.query<T>(text, params as never[]);
+    return result.rows;
+  } finally {
+    client.release();
+  }
 }
 
 /** Run a single query inside a transaction. */

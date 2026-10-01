@@ -109,6 +109,13 @@ employees, students, fees, payroll, expenses, leave, audit + settings, triggers,
 reporting views, RLS, reference data, hardening, money-view aggregates, and the
 later corrections.
 
+The last two migrations are about protecting data rather than storing it:
+
+- `023` makes every `ON DELETE` action executable, so removing an account fails
+  with a message that names the account instead of an internal contradiction.
+- `024` refuses `TRUNCATE` on every table. See
+  [Why TRUNCATE is refused](#why-truncate-is-refused).
+
 **Never edit a migration that has already been applied.** `db push` records the
 version and never re-reads the file, so the edit takes effect only in a fresh
 reset — leaving production quietly different from the repository. Write a new
@@ -117,6 +124,61 @@ numbered migration that alters the schema from wherever it actually is. The
 
 To inspect the database with the Supabase Studio-like dashboard:
 `npm run db:studio`.
+
+### Why TRUNCATE is refused
+
+The schema refuses `DELETE` on employees, salary history, bank accounts, fee
+payments, payroll items and the audit trail. Those refusals are `BEFORE DELETE`
+row triggers.
+
+`TRUNCATE` never fires row triggers — it only fires `BEFORE`/`AFTER TRUNCATE`
+*statement* triggers. So a single `truncate` walked straight past every one of
+them, and because the audit triggers are row triggers too, nothing recorded
+that anything had happened.
+
+Postgres does refuse a bare `truncate` on a table another table has a foreign
+key to. That is real protection, but it covers 13 of the 27 tables, and
+`CASCADE` satisfies it: `truncate students cascade` truncates the referencing
+tables too, so nothing is orphaned and the statement proceeds.
+
+The 14 uncovered tables included **five of the six** that migration 010 protects
+from `DELETE` — `audit_logs`, `employee_salary_history`,
+`employee_bank_accounts`, `fee_payments` and `payroll_items`. For those, a
+`DELETE` trigger was the only protection, and it was not enough.
+
+Migration `024` closes both gaps. `BEFORE TRUNCATE` guards on all 27 tables,
+built from a single list so no table can be added without one —
+`truncate-guards.test.ts` fails if a table exists without a guard, which is what
+stops tomorrow's new table from arriving unprotected.
+
+For a genuinely clean database, **drop it and re-run the migrations.** That is
+the correct route, and it is slower to do by accident than a `truncate`.
+
+This is a guard, not a vault: anyone who can `ALTER TABLE` can disable a trigger,
+and the `postgres` superuser can bypass all triggers in a session with
+`set session_replication_role = replica`. What it removes is the accidental
+path.
+
+### Transient connection failures
+
+`resolveSessionUser` reports any failure to reach the database as
+`unavailable`, which renders "The system cannot reach the school database". One
+lost packet — a VPN DNS proxy dropping a lookup, for instance — is enough to
+produce that page even though the account and the database are both fine.
+
+`src/server/db/retry.ts` retries a failed **connection** once before giving up,
+so a single dropped lookup costs one extra attempt instead of a dead end. The
+original error is rethrown if the retry also fails, so the cause is never hidden.
+
+It retries the acquisition of a connection and **nothing else**. A failed
+`connect()` has a known outcome: nothing was sent. A statement that dies
+mid-flight does not — the server may already have applied it — and in a system
+where payroll is immutable and the audit trail is append-only, a duplicated fee
+payment is worse than a failed page. `retry.test.ts` pins that boundary.
+
+Permission errors, integrity violations, query timeouts, deadlocks and
+serialization failures are deliberately **not** retried. See the exclusions at
+the top of `retry.ts`.
 
 ## 5. Create the first application user
 
@@ -213,3 +275,5 @@ is **no public signup** and no way for a profile to exist without a matching
 | login fails despite a correct password                 | the profile does not resolve under its own RLS context; run `npm run db:seed-first-user` again (it re-verifies) or `npm run db:verify-writes` |
 | `db:setup` FAIL: "the database does not match the migrations" | a migration file was edited after it was applied. Write a new numbered migration that alters the schema to the intended value, then `npm run db:migrate` |
 | deleting an account fails on a foreign key violation  | correct, and deliberate — an approved expense, leave request or payroll run must keep naming a real approver. Deactivate the account instead; see [Removing an account](#removing-an-account) |
+| "The system cannot reach the school database" | the database could not be reached at all. A dropped connection is retried once first; this means the retry also failed. If the hosts are IPv6-only (Supabase's are) and a VPN is answering DNS, the proxy is the usual culprit — see [Transient connection failures](#transient-connection-failures) |
+| "TRUNCATE is not permitted on &lt;table&gt;" | correct, and deliberate — see [Why TRUNCATE is refused](#why-truncate-is-refused). `TRUNCATE` bypasses every `DELETE` guard in the schema, so it is refused on every table. Drop the database and re-run the migrations for a clean slate |

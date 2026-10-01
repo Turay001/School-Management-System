@@ -12,6 +12,7 @@ import {
   ValidationError,
 } from '../../lib/errors';
 import { getPool, getServicePool, type Queryable } from './pool';
+import { withConnectionRetry } from './retry';
 
 /**
  * Transaction wrapper and RLS context.
@@ -64,7 +65,14 @@ export async function withTransaction<T>(
     return fn(options.existingClient, { correlationId });
   }
 
-  const client = kind === 'service' ? await getServicePool().connect() : await getPool().connect();
+  // ONLY the acquisition is retried. If `connect()` fails, no connection was
+  // made and no statement was sent, so a second attempt is free. Everything
+  // after this line runs exactly once: a transaction that fails partway
+  // through has already had statements applied by the server, and replaying it
+  // could post the same payment twice. See the note at the top of retry.ts.
+  const client = await withConnectionRetry('transaction', () =>
+    kind === 'service' ? getServicePool().connect() : getPool().connect(),
+  );
   const timeoutMs = options.timeoutMs ?? DEFAULT_TX_TIMEOUT_MS;
   let released = false;
 
