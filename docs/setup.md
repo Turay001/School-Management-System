@@ -82,6 +82,18 @@ What it does and does not do (from `scripts/db-setup.ts`):
 - Does **not** apply migrations. `supabase db push` owns the migration
   history table; two tools writing it would desynchronise it. It only reports
   which migrations are missing.
+- **Verifies the database still matches the migrations** ("Schema drift"). It
+  replays every migration the database records as applied into an in-process
+  PGlite, then diffs the foreign key delete actions and RLS flags against the
+  live catalog. A mismatch means a migration file was edited after it was
+  applied — which `db push` will never re-run, so the edit changed the
+  repository but not the database. Both this project and a fresh `db reset` then
+  describe different systems. Add a new numbered migration instead of editing an
+  applied one; this check is what catches it when someone does.
+
+Only the migrations the database *claims* to have applied are replayed. A
+migration that has not been pushed yet is pending work, not drift, and the
+status check above reports it.
 
 ## 4. Link and apply migrations
 
@@ -91,12 +103,17 @@ npx supabase link --project-ref <your-ref>
 npm run db:migrate
 ```
 
-`npm run db:migrate` is `supabase db push`. The 18 migrations build the whole
-schema: enums and identity, users, employees, students, fees, payroll,
-expenses, leave, audit + settings, triggers, reporting views, RLS, reference
-data, hardening, money-view aggregates. They are idempotent in the sense that
-`db push` tracks the
-history; do not hand-edit applied migrations.
+`npm run db:migrate` is `supabase db push`. The migrations in
+`supabase/migrations` build the whole schema: enums and identity, users,
+employees, students, fees, payroll, expenses, leave, audit + settings, triggers,
+reporting views, RLS, reference data, hardening, money-view aggregates, and the
+later corrections.
+
+**Never edit a migration that has already been applied.** `db push` records the
+version and never re-reads the file, so the edit takes effect only in a fresh
+reset — leaving production quietly different from the repository. Write a new
+numbered migration that alters the schema from wherever it actually is. The
+`db:setup` drift check above is what catches the mistake afterwards.
 
 To inspect the database with the Supabase Studio-like dashboard:
 `npm run db:studio`.
@@ -194,3 +211,5 @@ is **no public signup** and no way for a profile to exist without a matching
 | seed script: "No auth user with id …"                  | the `auth.users` row does not exist yet; create it in the dashboard and re-run                                                                |
 | seed script: "already has role X, not Y"               | the script refuses role changes by design; change the role through the application                                                            |
 | login fails despite a correct password                 | the profile does not resolve under its own RLS context; run `npm run db:seed-first-user` again (it re-verifies) or `npm run db:verify-writes` |
+| `db:setup` FAIL: "the database does not match the migrations" | a migration file was edited after it was applied. Write a new numbered migration that alters the schema to the intended value, then `npm run db:migrate` |
+| deleting an account fails on a foreign key violation  | correct, and deliberate — an approved expense, leave request or payroll run must keep naming a real approver. Deactivate the account instead; see [Removing an account](#removing-an-account) |

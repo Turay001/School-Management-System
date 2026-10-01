@@ -573,6 +573,190 @@ async function reportMigrations(client: Client): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Schema drift
+// ---------------------------------------------------------------------------
+
+/**
+ * WHY THIS EXISTS
+ * ===============
+ * `supabase db push` records a migration as applied and never looks at it
+ * again. Editing an already-applied migration file therefore changes nothing
+ * about the database, silently, and the two disagree from then on. A `db reset`
+ * builds the edited version while production keeps the original, so the
+ * repository stops describing the system it is supposed to describe.
+ *
+ * That is not hypothetical here: migration 002 declares
+ * `app_users.id -> auth.users.id ON DELETE RESTRICT` while this project's live
+ * database carried CASCADE, because 002 was edited after being applied. The
+ * consequences were real - CASCADE silently destroys an application profile and
+ * then attempts foreign key actions that the schema's own triggers forbid.
+ *
+ * HOW IT IS DETECTED
+ * ==================
+ * By applying the migrations, not by reading them. Parsing SQL for the value of
+ * a constraint option is guesswork; running the files gives what they actually
+ * declare. PGlite is the real Postgres engine compiled to WASM, so this is the
+ * same harness the test suite uses.
+ *
+ * Only the migrations the database claims to have applied are replayed. A
+ * migration that has not been pushed yet is not drift, and `reportMigrations`
+ * reports those separately - replaying them here would report pending work as
+ * corruption.
+ */
+
+interface SchemaShape {
+  /** `table.column` -> ON DELETE action, for every foreign key in public. */
+  deleteActions: Map<string, string>;
+  /** `table` -> 'rls+forced' | 'rls' | 'none', for every table in public. */
+  rls: Map<string, string>;
+}
+
+const FK_DELETE_ACTIONS_SQL = `
+  select src.relname as table_name,
+         col.attname as column_name,
+         case con.confdeltype
+           when 'a' then 'NO ACTION' when 'r' then 'RESTRICT'
+           when 'c' then 'CASCADE'  when 'n' then 'SET NULL'
+           when 'd' then 'SET DEFAULT'
+         end as on_delete
+    from pg_constraint con
+    join pg_class src on src.oid = con.conrelid
+    join pg_namespace n on n.oid = src.relnamespace
+    join lateral unnest(con.conkey) with ordinality k(attnum, ord) on true
+    join pg_attribute col
+      on col.attrelid = con.conrelid and col.attnum = k.attnum
+   where con.contype = 'f' and n.nspname = 'public'
+`;
+
+const RLS_FLAGS_SQL = `
+  select c.relname as table_name,
+         case
+           when c.relrowsecurity and c.relforcerowsecurity then 'rls+forced'
+           when c.relrowsecurity then 'rls'
+           else 'none'
+         end as mode
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where c.relkind = 'r' and n.nspname = 'public'
+`;
+
+async function readSchemaShape(db: Queryable): Promise<SchemaShape> {
+  const fks = await db.query<{ table_name: string; column_name: string; on_delete: string }>(
+    FK_DELETE_ACTIONS_SQL,
+  );
+  const rls = await db.query<{ table_name: string; mode: string }>(RLS_FLAGS_SQL);
+
+  return {
+    deleteActions: new Map(fks.rows.map((r) => [`${r.table_name}.${r.column_name}`, r.on_delete])),
+    rls: new Map(rls.rows.map((r) => [r.table_name, r.mode])),
+  };
+}
+
+/** Replay the recorded migrations into a scratch database and read the result. */
+async function expectedSchemaShape(
+  applied: Set<string>,
+): Promise<SchemaShape | { error: string }> {
+  const { PGlite } = await import('@electric-sql/pglite');
+  const db = new PGlite();
+
+  // Supabase owns the auth schema; PGlite does not have it. Stubbed to the
+  // shape the foreign keys need, matching src/server/db/__tests__/harness.ts.
+  await db.exec(`
+    create schema if not exists auth;
+    create table if not exists auth.users (
+      id uuid primary key,
+      email text unique,
+      created_at timestamptz default now()
+    );
+  `);
+
+  const dir = join(process.cwd(), 'supabase', 'migrations');
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .filter((f) => applied.has(f.split('_')[0]!));
+
+  for (const file of files) {
+    try {
+      await db.exec(readFileSync(join(dir, file), 'utf8'));
+    } catch (err) {
+      return { error: `${file}: ${describe(err)}` };
+    }
+  }
+
+  return readSchemaShape(db as unknown as Queryable);
+}
+
+async function verifySchemaDrift(client: Client): Promise<void> {
+  head('Schema drift');
+
+  let applied: Set<string>;
+  try {
+    const { rows } = await client.query<{ version: string }>(
+      'select version from supabase_migrations.schema_migrations',
+    );
+    applied = new Set(rows.map((r) => r.version));
+  } catch {
+    warn(
+      'skipped: supabase_migrations.schema_migrations is not readable, so there is\n' +
+        '        nothing to replay against. See the migration status above.',
+    );
+    return;
+  }
+  if (applied.size === 0) {
+    warn('skipped: no migrations recorded as applied.');
+    return;
+  }
+
+  const expected = await expectedSchemaShape(applied);
+  if ('error' in expected) {
+    warn(`skipped: could not replay the migrations - ${expected.error}`);
+    return;
+  }
+
+  const live = await readSchemaShape(client);
+  const problems: string[] = [];
+
+  // A changed delete action is the dangerous kind: it rewrites or refuses
+  // someone else's row, invisibly, at delete time.
+  for (const [column, want] of expected.deleteActions) {
+    const got = live.deleteActions.get(column);
+    if (got === undefined) {
+      problems.push(`${column}: missing from the database, migrations declare ${want}`);
+    } else if (got !== want) {
+      problems.push(`${column}: database has ${got}, migrations declare ${want}`);
+    }
+  }
+  for (const [column, got] of live.deleteActions) {
+    if (!expected.deleteActions.has(column)) {
+      problems.push(`${column}: database has ${got}, no migration declares it`);
+    }
+  }
+
+  for (const [table, want] of expected.rls) {
+    const got = live.rls.get(table);
+    if (got !== want) problems.push(`${table}: RLS is "${got}", migrations declare "${want}"`);
+  }
+
+  if (problems.length === 0) {
+    ok(
+      `database matches the ${applied.size} recorded migration(s): ` +
+        `${expected.deleteActions.size} foreign key actions, ${expected.rls.size} tables`,
+    );
+    return;
+  }
+
+  fail(
+    `the database does not match the migrations:\n` +
+      problems.map((p) => `          - ${p}`).join('\n') +
+      `\n        A migration file was almost certainly edited after it was applied.\n` +
+      `        \`supabase db push\` will not re-run it, so editing the file changes\n` +
+      `        nothing here. Add a new numbered migration that alters the database\n` +
+      `        to match, then run: npm run db:migrate`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Application connectivity
 // ---------------------------------------------------------------------------
 
@@ -749,6 +933,7 @@ async function main(): Promise<number> {
   await verifyRoles(db);
   await verifyEnforcement(db, config);
   await reportMigrations(client);
+  await verifySchemaDrift(client);
   await client.end().catch(() => undefined);
 
   await verifyAppConnection(config);
