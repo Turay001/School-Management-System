@@ -3,6 +3,7 @@ import 'server-only';
 import { z } from 'zod';
 
 import { assertPermission, type SessionUser } from '../auth/permissions';
+import { findCurrentTerm } from '../db/current-term';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
 import {
@@ -83,6 +84,17 @@ export interface SubjectRow {
 export interface AcademicOptions {
   yearId: string;
   yearName: string;
+  /**
+   * The term the school is in today, or `''` when no term has been defined.
+   *
+   * Present so a screen with no term chosen can open on the right one. The
+   * `terms` list is ordered `sequence asc` for the picker's own sake, which
+   * makes `terms[0]` Term 1 - right for a school in Term 1, and last term's
+   * grades for a school in Term 3. Defaulting to `terms[0]` was that bug;
+   * `currentTermId` is the fix, and it is one field rather than a rule each
+   * caller reimplements. See `db/current-term.ts`.
+   */
+  currentTermId: string;
   terms: Array<{ id: string; name: string }>;
   classes: Array<{ id: string; name: string }>;
   subjects: SubjectRow[];
@@ -245,6 +257,7 @@ export async function getAcademicOptions(user: SessionUser): Promise<AcademicOpt
     return {
       yearId: yearId ?? '',
       yearName: year.rows[0]?.name ?? '',
+      currentTermId: (await findCurrentTerm(tx))?.id ?? '',
       terms: terms.rows,
       classes: classes.rows,
       subjects: subjects.rows,

@@ -21,6 +21,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "db:setup": "tsx scripts/db-setup.ts",
     "db:seed-first-user": "tsx scripts/seed-first-user.ts",
+    "db:seed-demo": "tsx scripts/seed-demo-data.ts",
     "db:verify-writes": "tsx scripts/verify-audit-writes.ts",
     "db:migrate": "supabase db push",
     "db:reset": "supabase db reset",

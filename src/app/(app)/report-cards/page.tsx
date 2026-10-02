@@ -45,7 +45,10 @@ export default async function ReportCardsPage({
   const sp = await searchParams;
   const options = await getReportCardOptions(user);
   const selectedClass = sp.classId ?? options.classes[0]?.id ?? '';
-  const selectedTerm = sp.termId ?? options.terms[0]?.id ?? '';
+  // The term in progress, NOT terms[0]: that list runs `sequence asc` for the
+// picker's sake, so it starts at Term 1 and would show last term's grades to a
+// school in Term 3. See src/server/db/current-term.ts.
+const selectedTerm = sp.termId ?? options.currentTermId ?? options.terms[0]?.id ?? '';
 
   const cards =
     selectedClass && selectedTerm

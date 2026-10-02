@@ -3,6 +3,7 @@ import 'server-only';
 import { z } from 'zod';
 
 import { assertPermission, canAny, type SessionUser } from '../auth/permissions';
+import { resolveTerm, TERM_DROPDOWN_ORDER_BY, type CurrentTermRow } from '../db/current-term';
 import type { Queryable } from '../db/pool';
 import { withUserContext } from '../db/transaction';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../lib/errors';
@@ -265,7 +266,7 @@ export async function listFeesTerms(user: SessionUser): Promise<FeesTermOption[]
       `select t.id, t.name, ay.name as academic_year, ay.is_current
          from terms t
          join academic_years ay on ay.id = t.academic_year_id
-        order by ay.is_current desc, ay.start_date desc, t.sequence desc`,
+        order by ${TERM_DROPDOWN_ORDER_BY}`,
     );
     return rows.map((row) => ({
       id: row.id,
@@ -382,14 +383,6 @@ export async function adjustStudentBalance(
 // Helpers
 // ---------------------------------------------------------------------------
 
-interface TermRow {
-  id: string;
-  name: string;
-  academic_year_id: string;
-  academic_year: string;
-  is_current: boolean;
-}
-
 interface StudentMinRow {
   id: string;
   full_name: string;
@@ -423,27 +416,20 @@ interface ClassOutstandingDbRow {
   students_in_arrears: number;
 }
 
+/**
+ * The term to read, given an explicit selection or none.
+ *
+ * With no selection this is the term the school is in TODAY, not the last term
+ * in the year. Ordering by `sequence desc` used to pick Term 3 in October,
+ * putting six months of unstarted future balances in front of the bursar. See
+ * `db/current-term.ts` for the rule and for the other two screens that had the
+ * same bug in the opposite direction.
+ */
 async function findTerm(
   tx: Queryable,
   termId: string | null,
-): Promise<
-  (TermRow & { label: string }) | null
-> {
-  const { rows } = await tx.query<TermRow>(
-    termId
-      ? `select t.id, t.name, t.academic_year_id, ay.name as academic_year, ay.is_current
-           from terms t
-           join academic_years ay on ay.id = t.academic_year_id
-          where t.id = $1
-          limit 1`
-      : `select t.id, t.name, t.academic_year_id, ay.name as academic_year, ay.is_current
-           from terms t
-           join academic_years ay on ay.id = t.academic_year_id
-          order by ay.is_current desc, ay.start_date desc, t.sequence desc
-          limit 1`,
-    termId ? [termId] : [],
-  );
-  const row = rows[0];
+): Promise<(CurrentTermRow & { label: string }) | null> {
+  const row = await resolveTerm(tx, termId);
   if (!row) return null;
   return { ...row, label: `${row.academic_year} · ${row.name}` };
 }

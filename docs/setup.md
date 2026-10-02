@@ -252,6 +252,39 @@ auth user in the dashboard, then `db:seed-first-user` with their UUID. There
 is **no public signup** and no way for a profile to exist without a matching
 `auth.users` row.
 
+## 6b. Load a demonstration school (optional)
+
+A fresh installation has a complete schema and no school in it. Migrations seed
+the eight tables that hold the *system's* choices — academic years, terms, fee
+types, expense categories, leave types, settings, the bank template — and
+deliberately nothing describing the school itself. So after step 6 most screens
+render empty, and an empty screen is indistinguishable from a broken one.
+
+```
+npm run db:seed-demo -- --dry-run   # print the plan, write nothing
+npm run db:seed-demo                # load it
+npm run db:seed-demo -- --unload    # remove what it created
+```
+
+It adds **8 subjects, 6 classes, 7 staff, 24 students and 24 guardians** — and
+deliberately nothing else. Every generated code is `SUB-D…`, `CLS-D…`,
+`EMP-D…` or `STU-D…`, so demo rows are identifiable and cannot collide with the
+codes real students and staff receive. Names are common Sierra Leonean names
+belonging to nobody; phone numbers use the unallocated `+232 000 000 00` block.
+
+It writes **nothing to the financial tables** — no fee structures, payments,
+salary history, payroll or expenses. That is not an oversight. `TRUNCATE` is
+refused everywhere ([below](#why-truncate-is-refused)) and `DELETE` on
+`employees` is refused by design, so rows in those tables are effectively
+permanent: clearing them would mean dropping the database and losing the
+school's real data along with the demo rows. Real money goes in through the real
+screens, by the real bursar.
+
+`--unload` removes the subjects, classes, students and guardians, but only
+**deactivates** the staff. The database will not let it delete them, and that
+refusal is the correct behaviour — see
+[Removing an account](#removing-an-account).
+
 ## Verification after a change
 
 - `npm run db:verify-writes` — probes the audited write path against the live
@@ -277,3 +310,5 @@ is **no public signup** and no way for a profile to exist without a matching
 | deleting an account fails on a foreign key violation  | correct, and deliberate — an approved expense, leave request or payroll run must keep naming a real approver. Deactivate the account instead; see [Removing an account](#removing-an-account) |
 | "The system cannot reach the school database" | the database could not be reached at all. A dropped connection is retried once first; this means the retry also failed. If the hosts are IPv6-only (Supabase's are) and a VPN is answering DNS, the proxy is the usual culprit — see [Transient connection failures](#transient-connection-failures) |
 | "TRUNCATE is not permitted on &lt;table&gt;" | correct, and deliberate — see [Why TRUNCATE is refused](#why-truncate-is-refused). `TRUNCATE` bypasses every `DELETE` guard in the schema, so it is refused on every table. Drop the database and re-run the migrations for a clean slate |
+| every screen is empty after setup | expected — no school data exists yet. Run `npm run db:seed-demo` (see [Load a demonstration school](#6b-load-a-demonstration-school-optional)) |
+| `db:seed-demo` refuses with "No current academic year" | `npm run db:setup` has not created one yet, or every year has `is_current = false`; see Step 3 |

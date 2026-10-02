@@ -35,7 +35,10 @@ export function AssessmentForm({ options }: AssessmentFormProps) {
 
   const [classId, setClassId] = useState('');
   const [subjectId, setSubjectId] = useState('');
-  const [termId, setTermId] = useState(options.terms[0]?.id ?? '');
+  // The term in progress, NOT terms[0]: that list runs `sequence asc`, so it
+// starts at Term 1 and an assessment would default to the wrong term for two
+// thirds of the school year. See src/server/db/current-term.ts.
+const [termId, setTermId] = useState(options.currentTermId || options.terms[0]?.id || '');
   const [name, setName] = useState('');
   const [maxMarks, setMaxMarks] = useState('100');
   const [heldOn, setHeldOn] = useState('');
