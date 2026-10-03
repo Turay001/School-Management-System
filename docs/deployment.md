@@ -122,10 +122,20 @@ link and never reach the application at all.
 ## Config checks at startup
 
 `validateConfig` in `src/server/env.ts` returns human-readable problems instead
-of dying on the first one. It is exported but **not yet called from anywhere** —
-no setup or health page is wired to it — so today it is a library to be used,
-not a gate that runs on deploy. Treat its output as a pre-deploy checklist,
-surfaced however you choose.
+of dying on the first one. **It is now called from exactly one place: the
+`/api/health` endpoint**, which reports its findings as `checks.config.problems`
+and answers 503 when there are any.
+
+Until that existed it was a library nothing invoked, which meant a deployment
+missing `DATABASE_URL` behaved exactly like a correct one until a real request
+failed.
+
+`NEXTAUTH_URL` deserves a note, because the name is misleading: no code in this
+application uses Auth.js. `src/lib/public-origin.ts` reads it as the canonical
+public origin, and `sitemap.ts` and `robots.ts` publish it. With it unset those
+routes fall back to the host actually serving the request — factually true, but
+it means a preview deployment would publish its own preview URL as canonical.
+Set it on production only.
 
 It decides only from the environment; it never connects to the database. It
 checks:
@@ -148,6 +158,55 @@ it on the operator machine before deploying — it is the real gate, and
 `validateConfig` is not a substitute for it.
 
 Treat a non-empty finding list as a pre-deploy checklist, not a suggestion.
+
+## The health endpoint
+
+```
+GET /api/health      200 when healthy, 503 when not, Cache-Control: no-store
+```
+
+Unauthenticated on purpose. It is the one endpoint whose purpose is to be
+callable by whoever holds the deployment, including before anyone can sign in
+and including when sign-in is what is broken. `src/middleware.ts` does not
+session-guard `/api/*`, so nothing else had to be relaxed; every other handler
+still calls `requireUser()`.
+
+```bash
+curl -s https://<your-deployment>/api/health
+```
+
+It returns the configuration findings, whether one real query succeeded, how
+long it took, whether the connected role bypasses RLS, and a correlation id.
+
+**What it will not tell you.** No connection string, no host, no role name, no
+rows, no counts, and no driver error message — `pg` puts the host, the role and
+sometimes the password in `error.message`, so one interpolated message would
+publish the database address to the internet. A failure comes back as one of a
+fixed set: `not_configured`, `unreachable`, `authentication_failed`,
+`connection_exhausted`, `timed_out`, `schema_missing`, `unexpected`. The raw
+error is logged against the returned `correlationId` instead.
+
+Two behaviours worth knowing before you trust a green result:
+
+- **A working connection to a role that bypasses RLS reports `error`, not
+  `ok`.** Every request would succeed and no policy would be enforced.
+  `checks.database.unprivilegedRole` is the boolean to read.
+- **The probe reads the catalog, not the data.** `select count(*) from students`
+  as the application role returns zero rows and no error, because RLS is in
+  force with no application context — indistinguishable from having no access at
+  all. The probe uses `to_regclass`, so it actually answers "is this the right
+  database, and has it been migrated".
+
+The BYPASSRLS-capable `SERVICE_DATABASE_URL` credential is **never opened** by
+this endpoint; its presence is reported as a boolean. An unauthenticated
+endpoint that opened the service pool would be a remote trigger for the most
+powerful database credential in the system.
+
+This is also the only way to confirm a deployment's `DATABASE_URL` is right
+without reading it. Vercel does not release secret values to a project token —
+`vercel env pull` writes `"[SENSITIVE]"` for them — so there is no way to
+compare what is stored against what you intended. Hitting `/api/health` is the
+substitute.
 
 ## Build and run
 

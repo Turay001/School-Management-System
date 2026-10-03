@@ -133,6 +133,16 @@ function readRole(connectionString: string): string | null {
  * connect to the database, so it cannot assert anything about role membership
  * or RLS attributes -- see the comment on the DATABASE_URL role check for where
  * that assertion actually lives.
+ *
+ * CALLED BY: `/api/health`, via `runHealthCheck` in src/server/health.ts.
+ * That is the only caller. It was written with none for long enough that the
+ * findings here were never displayed anywhere: a deployment missing
+ * DATABASE_URL or AUTH_SECRET behaved identically to one that was configured
+ * correctly, and the difference was only visible by reading the dashboard. The
+ * health endpoint reports them, which is also why the role-escalation assertion
+ * above still points at `npm run db:verify-writes` rather than at itself: a
+ * string cannot decide whether a role can reach samjona_service, so this
+ * function deliberately does not try.
  */
 export function validateConfig(): string[] {
   const problems: string[] = [];
