@@ -153,6 +153,106 @@ describe('DATABASE_URL presence and shape', () => {
 });
 
 // ===========================================================================
+describe('the pooler tenant suffix', () => {
+  // THE PROBLEM THIS EXISTS TO PREVENT
+  // -----------------------------------
+  // Supavisor routes on `<role>.<project-ref>`, so the username in a pooler
+  // connection string is NOT the role. Comparing the whole username against
+  // `samjona_login` reports a healthy, correctly-configured pooler connection
+  // as the wrong role -- a check that fires on correct input. An operator
+  // reading that would "fix" something that was already right.
+  //
+  // This is not hypothetical: it is exactly what would have happened the moment
+  // the deployment was repointed from the broken direct host to the working
+  // pooler. The fix works, and validateConfig then reports it broken.
+
+  it('accepts the exact pooler string this deployment will use', () => {
+    // Verbatim shape of the intended production DATABASE_URL.
+    vi.stubEnv(
+      'DATABASE_URL',
+      conn({ user: `samjona_login.${REF}`, host: 'aws-1-eu-west-1.pooler.supabase.com' }),
+    );
+
+    const problems = validateConfig();
+
+    // Neither the role nor the host nor the port may object.
+    expect(mentions(problems, 'not samjona_login')).toBe(false);
+    expect(mentions(problems, 'direct host')).toBe(false);
+    expect(mentions(problems, 'transaction pooler (port 6543)')).toBe(false);
+    expect(problems).toEqual([]);
+  });
+
+  it('strips the tenant suffix so the role is the part before the first dot', () => {
+    vi.stubEnv(
+      'DATABASE_URL',
+      conn({ user: `samjona_login.${REF}`, host: 'aws-1-eu-west-1.pooler.supabase.com' }),
+    );
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(false);
+  });
+
+  it('still reports a genuinely wrong role through the pooler', () => {
+    // Stripping the suffix must not turn the check into a no-op. Only the
+    // project-ref part is removed; the role itself is still compared.
+    vi.stubEnv(
+      'DATABASE_URL',
+      conn({ user: `somebody_else.${REF}`, host: 'aws-1-eu-west-1.pooler.supabase.com' }),
+    );
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(true);
+  });
+
+  it('reports the superuser tenant as a service-role connection', () => {
+    // `postgres.<ref>` is what the dashboard hands out. It contains
+    // "postgres." so the pre-existing service-role check fires on it, which is
+    // correct: that role bypasses RLS and must never serve application traffic.
+    vi.stubEnv(
+      'DATABASE_URL',
+      conn({ user: `postgres.${REF}`, host: 'aws-1-eu-west-1.pooler.supabase.com' }),
+    );
+
+    expect(mentions(validateConfig(), 'service-role connection')).toBe(true);
+  });
+
+  it('does not strip anything on the direct host', () => {
+    // On a direct host the username IS the role, and a dotted username there is
+    // not a tenant suffix. Treating it as one would hide a wrong role.
+    vi.stubEnv('DATABASE_URL', conn({ user: `samjona_login.${REF}`, host: `db.${REF}.supabase.co` }));
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(true);
+  });
+
+  it('accepts a pooler username with no tenant suffix at all', () => {
+    // Supavisor always appends one, but a self-hosted pooler in front of
+    // something pooler-shaped need not. Splitting on a missing dot must not
+    // produce an empty string, which would compare unequal and false-alarm.
+    vi.stubEnv('DATABASE_URL', conn({ user: 'samjona_login', host: 'aws-1-eu-west-1.pooler.supabase.com' }));
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(false);
+  });
+
+  it('handles the tenant suffix together with a percent-encoded password', () => {
+    // The two transformations are independent and both must survive: decode the
+    // password, split the username.
+    vi.stubEnv(
+      'DATABASE_URL',
+      `postgresql://${encodeURIComponent(`samjona_login.${REF}`)}:p%40ss%3Aword@aws-1-eu-west-1.pooler.supabase.com:6543/postgres`,
+    );
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(false);
+  });
+
+  it('recognises the pooler host case-insensitively', () => {
+    vi.stubEnv(
+      'DATABASE_URL',
+      conn({ user: `samjona_login.${REF}`, host: 'AWS-1-EU-WEST-1.POOLER.SUPABASE.COM' }),
+    );
+
+    expect(mentions(validateConfig(), 'not samjona_login')).toBe(false);
+  });
+});
+
+// ===========================================================================
 describe('the direct-host finding', () => {
   it('fires on the exact string that shipped and broke the deployment', () => {
     // Verbatim shape of the real DATABASE_URL: right role, right password,

@@ -180,13 +180,44 @@ it; only `GET /api/health`, queried from the deployment rather than from your
 machine, showed the truth.
 
 The transaction pooler (`<region>.pooler.supabase.com:6543`) publishes IPv4
-addresses, which is why it is the only form that works here. Keep
-`samjona_login` as the role — Supavisor's tenant routing needs the project ref in
-the username, so expect `<role>.<project-ref>` at the pooler.
+addresses, which is why it is the only form that works here.
+
+### Read the pooler username correctly
+
+Supavisor multiplexes every project in a region onto one address, so it routes
+on `<role>.<project-ref>`. **The username in a pooler connection string is
+therefore not the role.**
+
+```
+direct host:  postgresql://samjona_login:<pw>@db.<ref>.supabase.co:5432/postgres
+pooler:       postgresql://samjona_login.<ref>:<pw>@<region>.pooler.supabase.com:6543/postgres
+```
+
+`validateConfig` strips the tenant suffix before comparing, so a correct pooler
+configuration produces no finding. Anything that parses the username naively will
+report the right answer as the wrong role — a check that fires on correct input,
+which is worse than no check, because the operator "fixes" what was already
+right. Keep the role's own password: only the project ref is added, and
+`postgres.<ref>` must never be used for application traffic even though it is
+what the dashboard hands out.
+
+### The region is `aws-1`, not `aws-0`
+
+This project sits on the **`aws-1`** pooler fleet:
+`aws-1-eu-west-1.pooler.supabase.com`.
+
+Worth recording because guessing is expensive here. Every `aws-0-*` region in
+every AWS partition was tried against this tenant, and all 18 returned
+`XX000 tenant/user ... not found` — which reads exactly like bad credentials and
+is not. The correct region was only obtainable from the dashboard's own
+connection string. **Read the host out of the dashboard; do not construct it.**
+A region guess that fails this way produces no finding from `validateConfig`,
+because the host is a pooler and the role is right — it only shows up as
+`unreachable` from `/api/health`.
 
 **Check `/api/health` from the deployment, never only from your machine.** That is
-the whole reason it exists, and the check above only catches the host shape — not
-a pooler that has been given the wrong region.
+the whole reason it exists, and the checks above only catch the host shape and
+the role — not a pooler given the wrong region, and not a wrong password.
 
 ## The health endpoint
 

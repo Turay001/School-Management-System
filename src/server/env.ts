@@ -116,9 +116,49 @@ export const serverEnv = {
  * Returns null when the string cannot be parsed, so the caller can say so
  * rather than silently treating an unparseable URL as a valid one.
  */
+/**
+ * Supabase's connection POOLER host, as opposed to its direct host.
+ *
+ * `*.pooler.supabase.com` fronts Supavisor, which multiplexes every project in
+ * a region onto one address.
+ */
+function isSupabasePoolerHost(host: string | null): boolean {
+  return host !== null && host.endsWith('.pooler.supabase.com');
+}
+
+/**
+ * Read the role (user) out of a PostgreSQL connection string.
+ * Returns null when the string cannot be parsed, so the caller can say so
+ * rather than silently treating an unparseable URL as a valid one.
+ *
+ * THE POOLER EXCEPTION, WHICH IS THE WHOLE REASON THIS IS NOT A ONE-LINER
+ * ---------------------------------------------------------------------
+ * On the direct host the username IS the role. Through Supavisor it is not:
+ * the pooler multiplexes every project in a region onto one address, so it
+ * routes on `<role>.<project-ref>` and the project ref has to be in the
+ * username for the connection to land on the right database at all.
+ *
+ * Comparing that whole string against `samjona_login` reports a healthy,
+ * correctly-configured pooler connection as the wrong role. That is the
+ * textbook failure of a check that fires on correct input: the operator reads
+ * "authenticates as samjona_login.qvocnsykkhpvldiebcbe, not samjona_login",
+ * concludes the configuration is wrong, and changes something that was right.
+ *
+ * So the tenant suffix is stripped before comparing. The split is on the first
+ * dot, which is ambiguous for a role whose own name contains a dot -- an
+ * acknowledged limitation, accepted because Supavisor defines this format and
+ * because the alternative (a false alarm on every pooler connection) is worse
+ * than the narrow case.
+ */
 function readRole(connectionString: string): string | null {
   try {
-    return decodeURIComponent(new URL(connectionString).username);
+    const url = new URL(connectionString);
+    const username = decodeURIComponent(url.username);
+    if (isSupabasePoolerHost(url.hostname.toLowerCase())) {
+      const separator = username.indexOf('.');
+      return separator === -1 ? username : username.slice(0, separator);
+    }
+    return username;
   } catch {
     return null;
   }
