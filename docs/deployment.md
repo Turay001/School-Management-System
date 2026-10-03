@@ -141,8 +141,9 @@ It decides only from the environment; it never connects to the database. It
 checks:
 
 - `DATABASE_URL` present; uses the pooler (6543); is not a `postgres.`/service
-  connection; and authenticates as `samjona_login` (the role is parsed out of
-  the connection string, not searched for inside it).
+  connection; authenticates as `samjona_login` (the role is parsed out of
+  the connection string, not searched for inside it); and is **not** pointed at
+  `db.<ref>.supabase.co` (see below).
 - `SERVICE_DATABASE_URL` present-or-explicitly-unset (payroll note), and if
   set, on port 6543.
 - `SUPABASE_SERVICE_ROLE_KEY` unset.
@@ -158,6 +159,34 @@ it on the operator machine before deploying — it is the real gate, and
 `validateConfig` is not a substitute for it.
 
 Treat a non-empty finding list as a pre-deploy checklist, not a suggestion.
+
+### Why the direct host is flagged
+
+This is not a style preference, and the check exists because a deployment reached
+production without it.
+
+Supabase projects provisioned recently are **IPv6-only on the direct host**
+(`db.<ref>.supabase.co`). That host publishes an AAAA record and **no A record**.
+A platform without IPv6 egress — Vercel's functions, most CI runners — therefore
+cannot resolve it, and fails with `getaddrinfo ENOTFOUND` before any TCP
+connection is attempted.
+
+The reason this hides so well: **it works on your machine.** A local IPv6 tunnel
+— Cloudflare WARP, a VPN, an IPv6-capable ISP — supplies the address the host is
+missing. So the connection string can be correct in every respect a local test
+can observe (right role, right password, right port, right database) and still be
+unusable in production. Every pre-existing check accepted the string that caused
+it; only `GET /api/health`, queried from the deployment rather than from your
+machine, showed the truth.
+
+The transaction pooler (`<region>.pooler.supabase.com:6543`) publishes IPv4
+addresses, which is why it is the only form that works here. Keep
+`samjona_login` as the role — Supavisor's tenant routing needs the project ref in
+the username, so expect `<role>.<project-ref>` at the pooler.
+
+**Check `/api/health` from the deployment, never only from your machine.** That is
+the whole reason it exists, and the check above only catches the host shape — not
+a pooler that has been given the wrong region.
 
 ## The health endpoint
 

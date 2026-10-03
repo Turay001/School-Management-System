@@ -125,6 +125,52 @@ function readRole(connectionString: string): string | null {
 }
 
 /**
+ * Read the host out of a PostgreSQL connection string, or null if unparseable.
+ */
+function readHost(connectionString: string): string | null {
+  try {
+    return new URL(connectionString).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Supabase's DIRECT host, as opposed to its pooler.
+ *
+ * `db.<ref>.supabase.co` is the host for a direct connection to the database.
+ * `*.pooler.supabase.com` is the host for the connection pooler. They are not
+ * interchangeable, and the difference is not visible from the port alone.
+ *
+ * WHY THIS NEEDS A CHECK AT ALL
+ * -----------------------------
+ * Supabase projects provisioned recently are IPv6-only on the direct host. That
+ * host publishes an AAAA record and NO A record, so a deployment platform
+ * without IPv6 egress cannot resolve it at all: DNS fails with ENOTFOUND before
+ * a TCP connection is ever attempted, and the error names the host rather than
+ * anything about configuration.
+ *
+ * The consequence is that this string can be completely correct -- right role,
+ * right password, right database, right port -- and still fail everywhere except
+ * on a developer machine. A developer machine is the one place it works, because
+ * a local IPv6 tunnel (Cloudflare WARP, a VPN, an IPv6-capable ISP) supplies the
+ * address the direct host is missing. That makes it close to invisible in
+ * development and absolute in production, which is the worst ratio of debugging
+ * effort to cause there is.
+ *
+ * The transaction pooler exists for exactly this: it publishes IPv4 addresses,
+ * so a platform without IPv6 can reach it. That is why the pooler is not merely
+ * a connection-count optimisation here, which is how the port-6543 check
+ * describes it.
+ *
+ * Matched against the direct-host shape rather than "anything supabase.com", so
+ * a pooler host, a self-hosted PostgreSQL, or a local socket is not flagged.
+ */
+function isSupabaseDirectHost(host: string | null): boolean {
+  return host !== null && /^db\.[^.]+\.supabase\.co$/.test(host);
+}
+
+/**
  * Validate the runtime configuration.
  * Returns human-readable problems rather than throwing, so a caller can
  * display them all at once.
@@ -162,6 +208,24 @@ export function validateConfig(): string[] {
     problems.push(
       'DATABASE_URL looks like a service-role connection. Application requests must use ' +
         'samjona_login so that RLS applies. Only payroll generation may use the service role.',
+    );
+  }
+
+  // Reachability from the deploy host. This sits with the other DATABASE_URL
+  // findings but is a different class of problem: the others are about a string
+  // being wrong, and this is about a string being entirely correct and still
+  // unusable where it matters. See isSupabaseDirectHost for why that is so easy
+  // to miss.
+  if (url && isSupabaseDirectHost(readHost(url))) {
+    problems.push(
+      'DATABASE_URL points at the Supabase direct host (db.<ref>.supabase.co) rather than the ' +
+        'connection pooler. Newer Supabase projects are IPv6-only on that host: it publishes no A ' +
+        'record, so a deployment platform without IPv6 egress cannot resolve it and fails with ' +
+        'ENOTFOUND before any connection is attempted. It will usually work on a developer ' +
+        'machine, because a local IPv6 tunnel (Cloudflare WARP, a VPN) supplies the missing ' +
+        'address, which is what makes it hard to see. Use the transaction pooler host ' +
+        '(<region>.pooler.supabase.com:6543) instead, and keep samjona_login as the role. ' +
+        'Check GET /api/health from the deployment, not only from your machine.',
     );
   }
 
