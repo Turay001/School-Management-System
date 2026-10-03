@@ -213,6 +213,45 @@ deliberate act with accountability; do them from the application as the
 Proprietor (they are recorded in the audit log) or with the appropriate user
 administrator.
 
+### Every account after the first
+
+Use `db:invite-user`. `db:seed-first-user` is the bootstrap and stays that way
+— it is the one account that cannot be created by an account that does not exist
+yet — but it is not the way to onboard staff.
+
+```
+npm run db:invite-user -- <auth-user-uuid> <username> "<Full Name>" <role> \
+                         [--employee <code>] [--allow-duplicate-role]
+```
+
+The auth user is still created by hand in the Supabase dashboard first, for the
+same reason: doing it in the application needs the service-role key, which this
+repository deliberately does not hold.
+
+Two things beyond what the first account needs:
+
+- **`--employee EMP-0004` links the login to a staff record.** Worth doing.
+  `app_users.employee_id` is what `/my-profile` and the staff-id resolution in
+  `src/server/portal/staff.ts` read, so a staff login created without it is a
+  login that cannot find the staff record behind it. If you omit it and exactly
+  one unlinked employee matches the name you typed, the script says so and gives
+  you the command to re-run — it does not guess, because two staff can share a
+  name and a wrong link would attach one person's payroll record to another.
+- **New accounts get `must_change_password`**, so each role dashboard shows a
+  prompt to replace the password the administrator set in the dashboard.
+
+It also refuses a **second active `proprietor`**. Two proprietors each hold every
+permission in the system, including the ability to change the other's role, and
+there is no longer a single point of accountability — that is a change of
+governance rather than a staffing decision. `--allow-duplicate-role` overrides it
+and records in the output that it was deliberate. Deactivated accounts do not
+count, so replacing a departed proprietor is not blocked.
+
+Every other role may be held more than once, and the script reports who already
+holds it. Notably it permits a **second bursar**, because
+`payroll.requireSeparateApprover` is true: payroll is run by one person and
+approved by another, so separation of duties needs two accounts to exist.
+
 ### Removing an account
 
 **Deactivate, do not delete.**
@@ -247,8 +286,8 @@ Sign in at `/login` with `<username>` and the password you set in step 5.
 Signing in is the only way the session bootstrap can resolve the profile
 through RLS.
 
-After the first user exists, additional users are created the same way:
-auth user in the dashboard, then `db:seed-first-user` with their UUID. There
+After the first user exists, additional users are created with `db:invite-user`:
+auth user in the dashboard, then the invite script with their UUID. There
 is **no public signup** and no way for a profile to exist without a matching
 `auth.users` row.
 
@@ -305,7 +344,10 @@ refusal is the correct behaviour — see
 | `validateConfig` reports SUPABASE_SERVICE_ROLE_KEY set | remove it — nothing reads it                                                                                                                  |
 | seed script: "No auth user with id …"                  | the `auth.users` row does not exist yet; create it in the dashboard and re-run                                                                |
 | seed script: "already has role X, not Y"               | the script refuses role changes by design; change the role through the application                                                            |
-| login fails despite a correct password                 | the profile does not resolve under its own RLS context; run `npm run db:seed-first-user` again (it re-verifies) or `npm run db:verify-writes` |
+| invite script: "is a single-holder role"               | a second active `proprietor`; see [Every account after the first](#every-account-after-the-first). Override with `--allow-duplicate-role` if deliberate |
+| invite script: "is already linked to USR-nnnn"         | one login per staff member; link this one to a different employee, or deactivate the old login first                                          |
+| invite script: "is already attached to this auth user" | the profile exists; use the application to change the role, or remove the profile first                                                        |
+| login fails despite a correct password                 | the profile does not resolve under its own RLS context; run `npm run db:verify-writes`, or re-run `db:seed-first-user` for the very first account (it re-verifies) |
 | `db:setup` FAIL: "the database does not match the migrations" | a migration file was edited after it was applied. Write a new numbered migration that alters the schema to the intended value, then `npm run db:migrate` |
 | deleting an account fails on a foreign key violation  | correct, and deliberate — an approved expense, leave request or payroll run must keep naming a real approver. Deactivate the account instead; see [Removing an account](#removing-an-account) |
 | "The system cannot reach the school database" | the database could not be reached at all. A dropped connection is retried once first; this means the retry also failed. If the hosts are IPv6-only (Supabase's are) and a VPN is answering DNS, the proxy is the usual culprit — see [Transient connection failures](#transient-connection-failures) |

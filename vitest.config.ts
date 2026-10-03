@@ -24,7 +24,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // scripts/ is included because two of its modules hold real logic worth
+    // holding to account: the role list, which had drifted from the database
+    // enum while nothing compared them, and the argument and occupancy rules.
+    // Neither needs a database to test, so there is no excuse for not testing them.
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'scripts/**/*.test.ts'],
     // PGlite boots a real Postgres engine per test file; give it room.
     testTimeout: 120_000,
     hookTimeout: 120_000,

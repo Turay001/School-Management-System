@@ -43,6 +43,16 @@
  * application needs, and the one credential it must never have belongs to
  * nobody but the person administering the account.
  *
+ * THE FIRST ACCOUNT ONLY
+ * ---------------------
+ * For every account after the first, use `npm run db:invite-user`. This script
+ * is the bootstrap, and it stays that way: it is the one action that cannot be
+ * performed by an account that does not exist yet. `invite-user` is the
+ * ordinary path and checks things this one has no reason to -- role occupancy,
+ * and linking the login to an employee record.
+ *
+ * Both share their implementation through `scripts/lib/app-user.ts`.
+ *
  * SAFE TO RE-RUN
  * --------------
  * If a row already exists for the given auth user id, the script reports it
@@ -57,45 +67,19 @@
  * teacher account.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { Client } from 'pg';
 
-/** Must match the `app_role` enum in migration 001. */
-const ROLES = [
-  'proprietor',
-  'principal',
-  'bursar',
-  'teacher',
-  'accountant',
-  'auditor',
-  'storekeeper',
-] as const;
-type Role = (typeof ROLES)[number];
-
-/** Must match `app_users_username_format` in migration 002. */
-const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,64}$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function readEnv(path: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(line);
-    if (m && !line.trimStart().startsWith('#')) out[m[1]!] = m[2]!.trim();
-  }
-  return out;
-}
-
-/**
- * Declared as a function rather than an arrow const on purpose: TypeScript only
- * narrows types after a `never`-returning call when the callee is a function
- * declaration or a const with an explicit type annotation. As an arrow const it
- * would silently not narrow, and the fix would be a scattering of `!`
- * assertions on values that have just been checked.
- */
-function fatal(message: string): never {
-  console.error(`\n  ${message}\n`);
-  process.exit(1);
-}
+import {
+  ROLES,
+  USERNAME_PATTERN,
+  UUID_PATTERN,
+  fatal,
+  isRole,
+  readEnv,
+  verifyVisibleAsItself,
+  type Role,
+} from './lib/app-user';
 
 const USAGE = `
   npm run db:seed-first-user -- <auth-user-uuid> <username> "<full name>" [role]
@@ -117,65 +101,18 @@ const USAGE = `
  * A type guard rather than `ROLES.includes(x)`.
  *
  * `Array.includes` does not narrow, so it cannot be used to prove to the
- * compiler that a string is one of the roles. The assertion that would be
- * needed in its place is exactly the kind that hides a typo: `propritor` would
- * compile, and would then be rejected by the database enum at runtime with an
- * error that says nothing about which word was wrong.
- */
-function isRole(value: string | undefined): value is Role {
-  return value !== undefined && (ROLES as readonly string[]).includes(value);
-}
-
-/**
- * Confirm the profile resolves through the exact context the application uses
- * when it signs the user in, and return its `user_code`.
+ * compiler that a string is one of the roles. The assertion that would be needed
+ * in its place is exactly the kind that hides a typo: `propritor` would compile,
+ * and would then be rejected by the database enum at runtime with an error that
+ * says nothing about which word was wrong.
  *
- * `withUserContext` (src/server/db/transaction.ts) runs an explicit
- * transaction and scopes `app.user_id` / `app.user_role` to it, inside a pool
- * that already connects as `samjona_app`. This mirrors that shape: the same
- * transaction-scoped GUCs, so `app_user_id()` / `app_user_role()` resolve like
- * they do for a real request.
- *
- * The WHERE clause then evaluates the policy predicates the application's
- * read path depends on (`id = app_user_id()` plus the role pointer). The
- * admin connection cannot switch to `samjona_app` - its `postgres` role is
- * given BYPASSRLS plus membership without the SET grant option on Supabase
- * cloud, and `set role` there is refused with 42501 - so the predicates are
- * evaluated over the BYPASSRLS connection rather than by the policies
- * themselves. Executing them verbatim catches the common failures (missing
- * row, role mismatch, GUC plumbing), while `npm run db:verify-writes`
- * (connecting as `samjona_login`) remains the authoritative role-level proof.
+ * The role list itself now lives in `scripts/lib/app-user.ts`, which imports it
+ * from the application's own ROLES constant. This file used to carry a literal
+ * copy that had drifted: it offered `accountant`, `auditor` and `storekeeper`,
+ * none of which are in the `app_role` enum, and omitted `admin`, which is. So it
+ * accepted three roles the database would reject and rejected one it has -- the
+ * exact failure the comment above describes, arriving anyway.
  */
-async function verifyVisibleAsItself(
-  db: Client,
-  authUserId: string,
-  role: Role,
-): Promise<string | null> {
-  await db.query('begin');
-  try {
-    await db.query('select set_config($1, $2, true)', ['app.user_id', authUserId]);
-    await db.query('select set_config($1, $2, true)', ['app.user_role', role]);
-
-    const { rows: visible } = await db.query<{ user_code: string }>(
-      `select user_code
-         from app_users
-        where id = $1
-          and app_user_id() = $1
-          and app_user_role() = $2::app_role`,
-      [authUserId, role],
-    );
-    await db.query('commit');
-    return visible[0]?.user_code ?? null;
-  } catch (err) {
-    try {
-      await db.query('rollback');
-    } catch {
-      // The connection is failing anyway; the original error matters more.
-    }
-    throw err;
-  }
-}
-
 function parseArgs(argv: string[]): {
   authUserId: string;
   username: string;
